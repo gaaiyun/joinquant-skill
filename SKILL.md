@@ -132,14 +132,20 @@ For high-stakes (live trading) strategies, additionally:
 |---|---|
 | `README.md` | Project intro |
 | `WORKFLOW.md` | Strategy development end-to-end (✅ complete) |
-| `INSTALL_CN.md` | Chinese install guide (TODO) |
+| `INSTALL_CN.md` | Chinese install guide (✅ complete) |
 | `api文档/api.txt` | Original 294KB API docs (raw backup) |
 | `references/01-14-*.md` | 14 progressive-disclosure category files (✅ all complete) |
 | `templates/01-05-*.py` | 5 production templates (✅ complete) |
-| `scripts/strategy_lint.py` | Lint tool (✅ operational) |
+| `scripts/strategy_lint.py` | Lint tool — black/whitelist hybrid (✅ operational) |
 | `scripts/strategy_scaffold.py` | Generate scaffold from description (✅ operational) |
 | `scripts/api_search.py` | Search API by keyword (✅ operational) |
-| `examples/case-*` | End-to-end case studies (✅ 2 cases) |
-| `tests/` | pytest (✅ 13 tests passing) |
+| `examples/case-mean-reversion/` | End-to-end case: RSI mean reversion (✅) |
+| `examples/case-etf-rotation/` | End-to-end case: ETF monthly rotation (✅) |
+| `examples/bad-strategy-for-lint-test.py` | Negative-test sample for lint regression (✅) |
+| `factors/` | (v2) Barra-style factor library, 7 categories |
+| `factor_lab/` | (v2) Single-factor IC / grouping / decay analysis |
+| `research_importer/` | (v2) Brokerage research PDF → JoinQuant code |
+| `mcp/` | (v2) MCP server exposing all skill capabilities |
+| `tests/` | pytest (50+ tests passing after v2) |
 
 This skill is at version **0.5.0** as of 2026-04-19. All 14 references + 5 templates + 3 scripts + 13 tests + WORKFLOW + 2 examples complete.

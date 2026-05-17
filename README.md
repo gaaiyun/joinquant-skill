@@ -2,7 +2,19 @@
 
 让 AI agent（Cursor / Claude Code / Codex / OpenCode 等）能正确生成符合 **聚宽（JoinQuant）平台** 的量化策略代码。
 
-不是教 AI 做策略——是给 AI 一份**完整的、AI 友好的 API 知识库 + 策略模板 + lint 工具**，让它生成的代码能直接复制到聚宽编辑器跑通。
+不是教 AI 做策略——是给 AI 一份**完整的、AI 友好的 API 知识库 + 策略模板 + lint 工具 + 因子库 + 研报复现 pipeline + MCP server**，让它生成的代码能直接复制到聚宽编辑器跑通。
+
+## v2 新增能力
+
+| 模块 | 解决什么 | 入口 |
+|---|---|---|
+| 🧪 [`factors/`](factors/) | Barra 风格 7 大类 9+ 因子的注册表，META 完整含 paper_refs / jq_dependencies / 已知问题 | `from factors import all_factors, by_category, search` |
+| 📊 [`factor_lab/`](factor_lab/) | 单因子 IC / Rank-IC / IR / 衰减 / 分组回测 — 用于在本地 jqdatasdk 数据上做因子研究 | `factor_lab.compute_ic / grouping_backtest` |
+| 📄 [`research_importer/`](research_importer/) | **PDF 研报 → 聚宽策略代码** pipeline：PDF 文本抽取 + LLM prompt 模板（三阶段抽取/归类/自评）+ 自动代码生成 | `python -m research_importer extract <pdf>` |
+| 🔌 [`mcp/`](mcp/) | MCP server — 把整个 skill 暴露成 6 个 tool 给 Claude Desktop / Cursor 调用 | `python -m mcp.server` |
+| 🛠️ [`scripts/strategy_lint.py`](scripts/strategy_lint.py) v2 | 新增 **JQ005 白名单检查**（strict 模式）+ 扩充 hallucination 黑名单到 25+ 条 + 文档说明对齐实现 | `python scripts/strategy_lint.py x.py --strict` |
+
+**研报复现免责声明**：[`research_importer/disclaimer.md`](research_importer/disclaimer.md)。简单说：仓库内不含任何研报正文；用户自己上传 PDF 副本，自负版权责任。
 
 ---
 
@@ -101,13 +113,16 @@ python scripts/strategy_lint.py my_strategy.py
 
 ### 在 Cursor / Claude Code 里直接用
 
-```bash
-# 方法 1：junction（推荐）
-cmd /c mklink /J "C:\Users\$env:USERNAME\.cursor\skills\joinquant-skill" "G:\joinquant skill"
-cmd /c mklink /J "C:\Users\$env:USERNAME\.claude\skills\joinquant-skill" "G:\joinquant skill"
+```powershell
+# 方法 1：先 clone，再 junction（推荐 — 编辑哪边都同步）
+cd D:\projects                              # 选你喜欢的目录（避免名字带空格）
+git clone https://github.com/gaaiyun/joinquant-skill.git
+cd joinquant-skill
+cmd /c mklink /J "$env:USERPROFILE\.cursor\skills\joinquant-skill" "$PWD"
+cmd /c mklink /J "$env:USERPROFILE\.claude\skills\joinquant-skill" "$PWD"
 
-# 方法 2：git clone
-cd "C:\Users\$env:USERNAME\.claude\skills"
+# 方法 2：直接 clone 进 skills 目录
+cd "$env:USERPROFILE\.claude\skills"
 git clone https://github.com/gaaiyun/joinquant-skill.git
 ```
 
@@ -149,10 +164,14 @@ joinquant-skill/
 │   ├── strategy_scaffold.py     根据描述生成策略骨架
 │   └── api_search.py            按关键词搜索 API（fallback for unsupported queries）
 ├── examples/
-│   ├── case-rsi-mean-reversion/ 完整案例：RSI 均值回归
-│   └── case-multi-factor-rotation/ 完整案例：多因子月度轮动
-└── tests/
-    └── test_strategy_lint.py    lint 工具的 pytest 测试
+│   ├── case-mean-reversion/         完整案例：RSI 均值回归
+│   ├── case-etf-rotation/           完整案例：ETF 月度轮动
+│   └── bad-strategy-for-lint-test.py "反例集合"（专门给 lint 自测用）
+├── factors/                         (v2 新增) Barra 风格 7 大类因子库
+├── factor_lab/                      (v2 新增) 单因子 IC / 分组 / 衰减分析
+├── research_importer/               (v2 新增) 研报 PDF → 聚宽策略代码
+├── mcp/                             (v2 新增) MCP server（让任何 MCP 客户端调用本 skill）
+└── tests/                           pytest 测试套件
 ```
 
 ---
