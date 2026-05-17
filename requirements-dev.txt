@@ -17,6 +17,10 @@ pytest>=7.4.0
 # ── 数值计算（factors / factor_lab 用） ─────────
 numpy>=1.24.0
 pandas>=2.0.0
+# scipy 是 pandas.Series.corr(method='spearman') 在内部调用的依赖，
+# factor_lab 的 IC 计算和 grouping 单调性都用 Spearman 秩相关。
+# 聚宽云预装 scipy，本仓库 CI 必须显式装。
+scipy>=1.11.0
 
 # ── 可选：本地跑聚宽因子库 ──────────────────────
 # 装上后，factors/<x>.compute_local 能真的拉数据。
