@@ -2,197 +2,273 @@
 
 让 AI agent（Cursor / Claude Code / Codex / OpenCode 等）能正确生成符合**聚宽（JoinQuant）平台**的量化策略代码。
 
-它不是教 AI 做策略，而是给 AI 一份结构化的 API 知识库、可粘贴运行的策略模板和静态检查工具，让生成结果能直接复制进聚宽 Web 编辑器跑通。v2 又在此之上补齐了因子注册表、单因子分析工具、研报抽取流水线和 MCP server。
+项目本身不教 AI 做策略，而是给 AI 一份结构化的 API 知识库、可粘贴运行的策略模板、静态检查工具、因子库与单因子分析工具，以及一条把券商研报变成聚宽策略代码的流水线。所有产物都被组织成一个可 install 的 skill，被 Cursor / Claude Code / MCP 客户端按需检索。
 
-## v2 新增模块
+## 一、它解决什么具体问题
 
-| 模块 | 用途 | 与聚宽编辑器的关系 |
-|---|---|---|
-| [`factors/`](factors/) | 因子注册表与元数据库。包含 9 个示例因子，覆盖 value / momentum / quality / growth / size / volatility / reversal 七类，每个因子都附原始文献引用、聚宽 factor id 映射、推荐中性化协变量、已知陷阱。底层调用聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values) 而不是手算字段。 | 不能整体粘贴到聚宽编辑器（含子目录 import），但单个因子的 `compute_jq` 函数体可以摘出来直接用。详细边界见 [`factors/USAGE.md`](factors/USAGE.md)。 |
-| [`factor_lab/`](factor_lab/) | 单因子分析工具：IC、Rank-IC、信息比率（日频）、IC 衰减、五分组回测、多空 Sharpe、单调性评分。 | 仅用于本地研究，配合 jqdatasdk 拉到本地的数据。 |
-| [`research_importer/`](research_importer/) | 研报 PDF 抽取流水线：PDF 文本抽取 → LLM 抽取 prompt（system + user）→ ExtractedStrategy schema → 聚宽策略代码生成。流水线本身不调用任何 LLM，prompt 与 schema 都交给上层应用调度。 | 生成结果就是可粘贴的聚宽策略文件；流水线本身只是开发期工具。 |
-| [`jqskill_mcp/`](jqskill_mcp/) | MCP server，把上述能力暴露成 7 个 tool 给 Claude Desktop、Cursor 等 MCP 客户端调用。所有工具都标注为 `readOnlyHint=True`，用 Pydantic 校验输入。包名特意叫 `jqskill_mcp` 而不是 `mcp`，避免与 [官方 `mcp` 包](https://pypi.org/project/mcp/) 冲突。 | 不适用——这是 IDE/agent 端的服务。 |
-| [`scripts/strategy_lint.py`](scripts/strategy_lint.py) v2 升级 | 新增 JQ005 白名单严格模式（`--strict`），把 hallucination 黑名单从 9 条扩到 25 条，文档对照真实实现。 | 跑在本地的 Python 静态检查工具，不入聚宽云。 |
+用 Claude / Cursor 写聚宽策略时反复遇到的几个坑：
 
-研报抽取功能涉及版权边界，详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)：仓库内不含任何研报正文，用户需自备合法获取的 PDF 副本。
-
----
-
-## 这个项目要解决什么
-
-我用 Claude / Cursor 写聚宽策略时遇到几个反复出现的问题：
-
-1. **模型乱编 API**：让它写 DiD 它给我 `pandas.DataFrame.diff_in_diff()`，让它写聚宽策略它给我 `jqdata.get_stock_data()`——这些都不存在。模型从训练数据里"猜"了一个看着像的名字。
-2. **混淆数据 API 和回测 API**：聚宽的 `get_price()` 在回测里和研究里行为不一样，模型往往不分场景就乱用。
-3. **未来函数防不胜防**：模型生成的代码经常违反"不能用未来数据"的规则，回测能跑通，实盘崩盘。
+1. **模型乱编 API**：让它写 DiD 它返回 `pandas.DataFrame.diff_in_diff()`；让它写聚宽策略它返回 `jqdata.get_stock_data()`——这些函数都不存在。
+2. **数据 API 与回测 API 混淆**：聚宽的 `get_price()` 在回测里和研究里行为不一样，模型常不分场景乱用。
+3. **未来函数防不胜防**：回测里能跑、实盘崩盘的常见原因。
 4. **复权模式搞错**：传统前复权 vs 真实价格（动态复权），细节一错全盘皆错。
-5. **每次都要把 API 文档塞进 prompt**：294KB 的官方文档不可能全塞，但只塞一部分模型又用不全。
+5. **API 文档塞不进 prompt**：294KB 的官方文档不可能整段塞，但只塞一部分模型又用不全。
 
-这个项目是把这些问题封装成一个 **可直接 install 的 skill**。
+这些问题不是写更长的 prompt 能解决的，所以我们把它们封装成一个**可 install 的 skill**——按需检索、按场景路由、本地 lint。
+
+## 二、能力地图（五大模块 + MCP 暴露层）
+
+| 模块 | 是什么 | 怎么用 | 能粘到聚宽编辑器跑吗 |
+|---|---|---|---|
+| [`references/`](references/) | 把官方 294KB API 文档按主题拆成 14 份 markdown，让 AI 按场景关键词加载（progressive disclosure），不再一次塞整本。 | Cursor / Claude Code 读 [`SKILL.md`](SKILL.md) 路由表自动选；人类直接 `notepad references/02-data-getters.md` | — 知识库本身不入聚宽 |
+| [`templates/`](templates/) + [`scripts/strategy_scaffold.py`](scripts/strategy_scaffold.py) | 5 个生产可用的策略骨架（基础单股 / 多因子 / ETF 轮动 / 动量 / 均值回归），每行关键 API 旁注 `# RATIONALE`。 | `python scripts/strategy_scaffold.py --type rotation --security 510300.XSHG --hold-num 5` | 是 — 直接复制 |
+| [`scripts/strategy_lint.py`](scripts/strategy_lint.py) | 静态检查 25+ 条常见错误：编造 API、未来函数、缺 use_real_price / order_cost / slippage、在非交易时段下单等。`--strict` 模式开启 JQ005 白名单严格校验。 | `python scripts/strategy_lint.py my_strategy.py --strict` | — 检查工具，不入聚宽 |
+| [`factors/`](factors/) | 9 个示例因子的注册表（value / momentum / quality / growth / size / volatility / reversal 七类）。每个因子带文献引用、聚宽官方 factor id 映射、推荐中性化协变量、已知陷阱。底层调聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values)，不重写计算。 | `from factors import all_factors, get, resolve`；策略里直接用 `from jqfactor import get_factor_values` | 否（含子目录 import）。单个因子的 `compute_jq` 函数体可摘出来用，边界见 [`factors/USAGE.md`](factors/USAGE.md) |
+| [`factor_lab/`](factor_lab/) | 单因子分析工具：IC / Rank-IC / 日频 IR / 衰减、五分组回测、多空 Sharpe、单调性评分。 | `from factor_lab import compute_ic, grouping_backtest`，配合本地 jqdatasdk 数据 | 否，本地研究专用 |
+| [`research_importer/`](research_importer/) | 研报 PDF → 聚宽策略代码端到端流水线：PDF 抽取（3 后端 fallback）→ akshare 抓研报清单 → LLM prompt 构造 → ExtractedStrategy schema → 自动生成可粘贴的聚宽 `.py`。**流水线本身不调任何 LLM**——把 prompt 还给你，你用自己的 key 调。 | `python -m research_importer pipeline report.pdf -o out/` 或 `python -m research_importer fetch --code 600519` | 生成的策略可粘聚宽；流水线工具不入聚宽 |
+| [`jqskill_mcp/`](jqskill_mcp/) | MCP server，把上述能力（除 references 以外）暴露成 7 个 tool 给 Claude Desktop / Cursor 等 MCP 客户端调用。工具命名统一加 `jq_` 前缀避免冲突，输入用 Pydantic 校验，全部 `readOnlyHint=True`。 | `python -m jqskill_mcp.server`；客户端配置见 [`jqskill_mcp/server.py`](jqskill_mcp/server.py) 顶部 docstring | — IDE/agent 端服务 |
+
+> 包名特意叫 `jqskill_mcp` 而不是 `mcp`，避免与 PyPI 上的官方 [`mcp`](https://pypi.org/project/mcp/) 包冲突（曾因此踩坑见 `.review_workspace/audit_tests_and_engineering.md`）。
+
+研报功能涉及版权边界，详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)：**仓库内不含任何研报正文**；akshare 抓的是公开摘要而非付费 PDF；用户自备 PDF 副本自负版权责任。
+
+## 三、三条典型工作流
+
+完整步骤见 [`WORKFLOW.md`](WORKFLOW.md)，这里给概要。
+
+### 工作流 A：手写或借 AI 写一个聚宽策略
+
+```
+你描述需求
+   │
+   ▼
+Cursor / Claude Code 读 SKILL.md →
+   路由到 templates/0X.py + references/0X.md → 生成代码
+   │
+   ▼
+python scripts/strategy_lint.py my_strategy.py --strict
+   │
+   ▼  通过
+粘贴到聚宽 Web 编辑器 → 编译 → 回测 → 调参
+```
+
+### 工作流 B：从一份研报复现多因子策略
+
+```
+report.pdf （你自己有的副本）            或   akshare 抓的研报清单
+   │                                          │
+   │  python -m research_importer extract     │  python -m research_importer fetch
+   ▼                                          ▼     --code 600519 --limit 5
+out/01_extracted_text.txt        ◀────────────┘
+   │
+   │  python -m research_importer build-prompt
+   ▼
+out/02_llm_prompt.json （system + user prompt）
+   │
+   │  你把 prompt 发给 Claude / GPT，把模型 JSON 输出存为 03_extracted.json
+   ▼
+out/03_extracted.json
+   │
+   │  python -m research_importer codegen
+   ▼
+out/strategy/strategy.py + _meta.yaml （自动跑 lint，过了就可粘聚宽）
+```
+
+一条龙：`python -m research_importer pipeline report.pdf -o out/`
+
+完整 walkthrough：[`examples/case-research-replication/`](examples/case-research-replication/)（含一份可直接跑的 `sample_extracted.json` 和它生成的 `sample_strategy.py`）。
+
+### 工作流 C：在本地做单因子研究
+
+```python
+from jqdatasdk import auth
+from factors import get
+from factor_lab import compute_ic, grouping_backtest
+
+auth('your_jq_user', 'your_jq_pwd')
+
+entry = get('roe_ttm')        # 拿 META + compute_local
+# ... 按日期循环拉 factor 与 forward returns，组成 panel ...
+
+ic = compute_ic(factor_panel, forward_returns)
+print(ic.ic_mean, ic.ic_ir, ic.annualized_ir())
+
+gb = grouping_backtest(factor_panel, forward_returns, n_groups=5)
+print(gb.long_short_sharpe, gb.monotonicity_score)
+```
+
+详见 [`WORKFLOW.md`](WORKFLOW.md) 的「因子研究工作流」章节，本仓库 9 个因子与聚宽官方 factor id 的对照表见 [`factors/USAGE.md`](factors/USAGE.md)。
 
 ---
 
-## 它和已有项目的关系
+## 四、它和已有项目的关系
 
-| 项目 | 解决什么 | 我们做什么 |
+| 项目 | 解决什么 | 本仓库做什么 |
 |---|---|---|
-| [`JoinQuant/jqdatasdk`](https://github.com/joinquant/jqdatasdk)（1.2K stars，官方） | 本地拉取聚宽数据 | reference，但不在我们项目里 |
-| [`stairclimber/joinquant_api`](https://github.com/stairclimber/joinquant_api)（14 stars） | 本地 IDE 智能提示（API 签名） | 借鉴它的函数签名结构 |
-| [`openclaw-skills-joinquant-strategy`](https://lobehub.com/zh-TW/skills/openclaw-skills-joinquant-strategy) | OpenClaw 平台 skill | 类似定位，但我们做 Cursor + Claude Code 双 IDE |
-| [`marketcalls/vectorbt-backtesting-skills`](https://github.com/marketcalls/vectorbt-backtesting-skills)（100 stars） | VectorBT 回测 skill | 它做 VectorBT，我们做聚宽 |
-| [`brainbytes-dev/everything-claude-trading`](https://github.com/brainbytes-dev/everything-claude-trading) | 18 agents + 82 skills 量化系统 | 它通用全栈，我们专精聚宽 |
+| [`JoinQuant/jqdatasdk`](https://github.com/joinquant/jqdatasdk) | 本地拉取聚宽数据 | 不重写，作为可选依赖被 `factors/*.compute_local` 引用 |
+| [`stairclimber/joinquant_api`](https://github.com/stairclimber/joinquant_api) | 本地 IDE 智能提示（API 签名） | 借鉴它的函数签名结构 |
+| [`marketcalls/vectorbt-backtesting-skills`](https://github.com/marketcalls/vectorbt-backtesting-skills) | VectorBT 回测 skill | 它做 VectorBT，我们专精聚宽 |
+| [`brainbytes-dev/everything-claude-trading`](https://github.com/brainbytes-dev/everything-claude-trading) | 18 agents + 82 skills 通用量化系统 | 它做全栈，我们做窄而深 |
+| [`microsoft/RD-Agent`](https://github.com/microsoft/RD-Agent) | 通用多 agent factor-model co-optimization | 它针对 qlib 平台，我们针对聚宽 + 给 AI 的 Skill 形态 |
 
-**核心差异**：我们专注**单一平台的 API 准确性**——让 AI 生成的代码不需要改就能粘到聚宽编辑器跑通。
-
----
-
-## 三大能力
-
-### 1. AI 友好的 API 知识库（progressive disclosure）
-
-把官方 294KB 的 API 文档拆成 14 个 reference 文件，按需加载：
-
-```
-references/
-├── 01-strategy-setup.md        # 策略设置（initialize / set_benchmark / set_option ...）
-├── 02-data-getters.md          # 数据获取（get_price / attribute_history / history ...）
-├── 03-jqlib.md                 # jqlib（alpha101 / alpha191 / technical_analysis ...）
-├── 04-data-processing.md       # 数据处理函数
-├── 05-portfolio-optimization.md # 组合优化
-├── 06-trading.md               # 交易（order / order_value / order_target ...）
-├── 07-objects.md               # 对象（Order / Position / Portfolio / OrderCost ...）
-├── 08-misc-functions.md        # 其他
-├── 09-multi-portfolio.md       # 多投资组合
-├── 10-tick-strategy.md         # Tick 级策略专用
-├── 11-margin-trading.md        # 融资融券（margincash_open / marginsec_open ...）
-├── 12-futures.md               # 期货专用
-├── 13-attribution-analysis.md  # 归因分析（Brinson / 因子分析）
-└── 14-strategy-engine.md       # 策略引擎机制（订单处理 / 撮合 / 复权 / 滑点 / 税费 / 风险指标）
-```
-
-`SKILL.md` 是入口，根据用户的需求路由到对应的 reference 文件。
-
-### 2. 策略模板库
-
-5 个最常见的策略骨架，覆盖 80% 的实证策略类型：
-
-```
-templates/
-├── 01-basic-single-stock.py    # 单股票均线策略（入门）
-├── 02-multi-factor.py          # 多因子选股 + 月度调仓
-├── 03-etf-rotation.py          # ETF 轮动（动量排序）
-├── 04-momentum-stock.py        # 股票动量（横截面 + 时序）
-└── 05-mean-reversion.py        # 均值回归（布林带 / RSI）
-```
-
-每个模板都：
-- 直接可粘贴到聚宽编辑器跑通
-- 头部注释说明回测参数建议
-- 关键 API 调用旁边都有 `# RATIONALE` 注释解释为什么这么写
-
-### 3. Lint 工具
-
-防止 AI 编出不存在的 API 或写出未来函数：
-
-```bash
-python scripts/strategy_lint.py my_strategy.py
-```
-
-检查项：
-- ✅ 所有函数调用都在聚宽 API 列表里
-- ✅ `get_price` 是否传了 `count` 参数（避免未来函数的常见来源）
-- ✅ 是否调用了 `set_option('use_real_price', True)`（强烈推荐开启）
-- ✅ `OrderCost` 设置是否合理（手续费 / 印花税 / 最低收费）
-- ✅ 滑点是否设置（`set_slippage`）
-- ✅ 是否在 `before_trading_start` / `after_trading_end` 中下单（违法）
-- ✅ 是否使用了已废弃的 API（如旧的 `update_universe`）
+核心差异：我们专注**单一平台的 API 准确性**——让 AI 生成的代码不需要改就能粘到聚宽编辑器跑通，并把这条主线延伸到「研报 → 策略」和「单因子分析」两个相邻场景。
 
 ---
 
-## 快速试用
+## 五、快速试用
 
-### 在 Cursor / Claude Code 里直接用
+### 1. 安装
 
 ```powershell
-# 方法 1：先 clone，再 junction（推荐 — 编辑哪边都同步）
-cd D:\projects                              # 选你喜欢的目录（避免名字带空格）
+cd D:\projects                              # 选你喜欢的目录，避免名字带空格
 git clone https://github.com/gaaiyun/joinquant-skill.git
 cd joinquant-skill
+
+# 注册为 Cursor / Claude Code 的 skill（junction 不占额外空间）
 cmd /c mklink /J "$env:USERPROFILE\.cursor\skills\joinquant-skill" "$PWD"
 cmd /c mklink /J "$env:USERPROFILE\.claude\skills\joinquant-skill" "$PWD"
 
-# 方法 2：直接 clone 进 skills 目录
-cd "$env:USERPROFILE\.claude\skills"
-git clone https://github.com/gaaiyun/joinquant-skill.git
+# 装开发 / 测试依赖（核心 lint / scaffold 是纯标准库，不需要装）
+pip install -r requirements-dev.txt
+
+# 可选：装 akshare 才能用 fetch 命令
+pip install akshare
 ```
 
-然后在 Cursor 对话里说：
+详细 Windows / macOS / Linux 安装步骤见 [`INSTALL_CN.md`](INSTALL_CN.md)。
+
+### 2. 在 Cursor / Claude Code 里用
+
+直接在对话里说：
 
 > 用 joinquant-skill 帮我写一个基于 RSI 的均值回归策略，标的 000300.XSHG 成分股，月度调仓
 
-Cursor 会自动读 SKILL.md → 路由到 `templates/05-mean-reversion.py` 和 `references/02-data-getters.md` → 生成可直接粘贴的代码。
+Cursor / Claude Code 读 `SKILL.md` → 路由到 `templates/05-mean-reversion.py` + `references/02-data-getters.md` → 生成可粘贴的代码 → 你本地跑 `python scripts/strategy_lint.py` 验证 → 粘到聚宽 Web 编辑器。
 
-### 不用 IDE，直接看文档
+### 3. 命令行直接用
 
 ```powershell
-# 看 SKILL.md 入口
+# 看 14 个 reference 索引
 notepad SKILL.md
 
-# 看某个具体类别的 API
-notepad references/02-data-getters.md
+# 命令行生成策略骨架
+python scripts/strategy_scaffold.py --type rotation --security 510300.XSHG --hold-num 5
 
-# 跑 lint 检查现有策略
-python scripts/strategy_lint.py my_strategy.py
+# 跑 lint 检查
+python scripts/strategy_lint.py my_strategy.py --strict
+
+# 搜索 API 用法
+python scripts/api_search.py get_price
+
+# 研报抽取流水线（详见 WORKFLOW.md）
+python -m research_importer pipeline /path/to/report.pdf -o out/
+python -m research_importer fetch --code 600519 --limit 5
 ```
+
+### 4. 启动 MCP server 给其他 MCP 客户端用
+
+```powershell
+pip install "mcp[cli]"
+python -m jqskill_mcp.server   # stdio 协议，被 Claude Desktop 等托管
+```
+
+Claude Desktop 的 `claude_desktop_config.json` 配置：
+
+```json
+{
+  "mcpServers": {
+    "joinquant-skill": {
+      "command": "python",
+      "args": ["-m", "jqskill_mcp.server"],
+      "cwd": "D:\\projects\\joinquant-skill"
+    }
+  }
+}
+```
+
+启动后客户端能看到 7 个 `jq_*` 工具：`jq_list_factors` / `jq_get_factor` / `jq_resolve_factor_id` / `jq_lint_strategy` / `jq_scaffold_strategy` / `jq_search_api` / `jq_build_research_extract_prompt`。
 
 ---
 
-## 项目结构
+## 六、项目结构
 
 ```
 joinquant-skill/
-├── README.md                    项目入口（你现在在看）
-├── SKILL.md                     Cursor / Claude Code skill 入口（带 frontmatter）
-├── WORKFLOW.md                  策略开发完整工作流（编写 → lint → 粘贴 → 回测 → 模拟 → 实盘）
-├── INSTALL_CN.md                Windows 中文安装指南
-├── api文档/
-│   └── api.txt                  完整官方 API 文档（294KB，原始备份）
-├── references/                  14 个按类别拆分的 API 知识库
-├── templates/                   5 个策略骨架模板
+├── README.md                       项目入口（你现在在看）
+├── SKILL.md                        Cursor / Claude Code skill 入口（含 YAML frontmatter）
+├── WORKFLOW.md                     三条工作流总览：策略开发 / 研报复现 / 因子研究
+├── INSTALL_CN.md                   Windows 中文安装指南
+│
+├── api文档/api.txt                 官方完整 API 文档原始备份（294KB）
+├── references/                     14 个按类别拆分的 AI 友好知识库
+├── templates/                      5 个生产可用策略模板
+│
 ├── scripts/
-│   ├── strategy_lint.py         lint 工具
-│   ├── strategy_scaffold.py     根据描述生成策略骨架
-│   └── api_search.py            按关键词搜索 API（fallback for unsupported queries）
+│   ├── strategy_lint.py            静态 lint（25+ 条检查项 + JQ005 strict 模式）
+│   ├── strategy_scaffold.py        命令行生成策略骨架
+│   └── api_search.py               按关键词搜 api.txt
+│
+├── factors/                        因子注册表（9 个示例 × 7 类）
+│   ├── _base.py / _helpers.py      FactorMeta + winsorize/standardize/neutralize
+│   ├── _jq_native.py               聚宽官方 get_factor_values 包装层
+│   ├── USAGE.md                    必读：本目录与聚宽编辑器的边界声明
+│   └── value / momentum / quality / ...   按类组织的因子文件
+│
+├── factor_lab/                     单因子分析（IC / 分组回测 / 多空 Sharpe）
+│   └── single_factor/
+│       ├── ic.py                   compute_ic + ICReport.annualized_ir
+│       └── grouping.py             grouping_backtest + monotonicity
+│
+├── research_importer/              研报 → 聚宽策略 端到端流水线
+│   ├── __main__.py                 CLI：extract / fetch / build-prompt / codegen / pipeline
+│   ├── extractor/
+│   │   ├── pdf.py                  PDF 抽取（pypdfium2/pdfplumber/PyPDF2 三后端 fallback）
+│   │   └── akshare_loader.py       用 akshare 抓某股票研报清单 + 摘要
+│   ├── parser/
+│   │   ├── schema.py               ExtractedStrategy / ExtractedFactor dataclass
+│   │   └── prompts.py              LLM 三阶段抽取 prompt 模板
+│   ├── generator/
+│   │   └── strategy_code.py        ExtractedStrategy → 聚宽 .py（含真用 get_factor_values）
+│   └── disclaimer.md               版权边界声明
+│
+├── jqskill_mcp/                    MCP server
+│   └── server.py                   7 个 jq_* tool（Pydantic 输入校验 + readOnlyHint）
+│
 ├── examples/
-│   ├── case-mean-reversion/         完整案例：RSI 均值回归
-│   ├── case-etf-rotation/           完整案例：ETF 月度轮动
-│   └── bad-strategy-for-lint-test.py "反例集合"（专门给 lint 自测用）
-├── factors/                         (v2 新增) Barra 风格 7 大类因子库
-├── factor_lab/                      (v2 新增) 单因子 IC / 分组 / 衰减分析
-├── research_importer/               (v2 新增) 研报 PDF → 聚宽策略代码
-├── jqskill_mcp/                     (v2 新增) MCP server（让任何 MCP 客户端调用本 skill）
-└── tests/                           pytest 测试套件
+│   ├── case-mean-reversion/        完整案例：RSI 均值回归
+│   ├── case-etf-rotation/          完整案例：ETF 月度轮动
+│   ├── case-research-replication/  完整案例：研报 → 聚宽策略 端到端 walkthrough（v2.3 新增）
+│   └── bad-strategy-for-lint-test.py 反例集合（给 lint 自测用）
+│
+├── tests/                          pytest 测试（120+ 个，CI 在 4 个 Py 版本上跑）
+└── .github/workflows/ci.yml        CI：pytest + dogfood lint templates / examples
 ```
 
 ---
 
-## 核心约定
+## 七、核心约定
 
-### 不重新发明聚宽
+**不重新发明聚宽。** 不重写 jqdatasdk，不实现回测引擎，不下载付费研报正文。本仓库只做让 AI 准确生成聚宽代码这一件主线工作；研报抽取与因子分析是这条主线的两个相邻延伸。需要本地数据请用 [`jqdatasdk`](https://github.com/joinquant/jqdatasdk)，需要本地 IDE 智能提示请用 [`stairclimber/joinquant_api`](https://github.com/stairclimber/joinquant_api)。
 
-我们 **不重写** jqdatasdk，**不实现** 回测引擎。我们只做**让 AI 准确生成聚宽代码**这一件事。
+**优先调聚宽官方因子库。** `factors/` 下的因子默认调聚宽 [`jqfactor.get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values) 拿预计算值，不手算 `query().filter()`。只有当聚宽确实没有现成因子时（如 5 日反转）才走 `get_price` 手算。
 
-如果你想本地拉数据，用 [`jqdatasdk`](https://github.com/joinquant/jqdatasdk)。  
-如果你想 IDE 智能提示，用 [`stairclimber/joinquant_api`](https://github.com/stairclimber/joinquant_api)。  
-我们的产物是 SKILL.md + 知识库 + 模板 + lint，是 **agent 用** 的，不是 **人用** 的代码库。
+**中文优先。** 所有 references 中文为主，函数签名保留英文。注释里的 `# RATIONALE` 用中文解释「为什么这么写」。
 
-### 中文优先
+**准确性 > 完整性。** 如果某个 API 在不同场景下行为有微妙差异（比如 `get_price` 在回测和研究环境的差异），references 必须明确写出来；宁可遗漏，不可错误。
 
-所有 references 中文为主，函数签名英文。注释 RATIONALE 用中文解释为什么这么写。
+**研报复现要尊重版权。** 仓库不内置任何券商研报正文；akshare 只拉公开摘要不抓付费 PDF；用户上传 PDF 需自负版权责任，对外发表复现结果时请用自己的话改写并注明出处。详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)。
 
-### 准确性 > 完整性
+---
 
-如果某个 API 在不同场景下行为有微妙差异（比如 `get_price` 在回测和研究环境的差异），references 必须明确写出来。**宁可遗漏，不可错误**。
+## 八、版本与文档
+
+- 当前主分支 = v2.3（CI 在 Python 3.10–3.13 全绿）
+- 完整工作流文档：[`WORKFLOW.md`](WORKFLOW.md)
+- Cursor / Claude Code skill 入口：[`SKILL.md`](SKILL.md)
+- Windows 中文安装指南：[`INSTALL_CN.md`](INSTALL_CN.md)
+- 因子模块边界声明：[`factors/USAGE.md`](factors/USAGE.md)
+- 研报版权声明：[`research_importer/disclaimer.md`](research_importer/disclaimer.md)
+- 完整研报复现 walkthrough：[`examples/case-research-replication/`](examples/case-research-replication/)
 
 ---
 
