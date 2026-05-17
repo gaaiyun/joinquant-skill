@@ -1,4 +1,4 @@
-"""mcp/server.py 测试 — 直接调 *_impl 函数（绕过 MCP 框架）。
+"""jqskill_mcp/server.py 测试 — 直接调 *_impl 函数（绕过 MCP 框架）。
 
 这样 CI 不需要装 mcp 包也能跑测试。
 """
@@ -12,7 +12,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import pytest
 
-from mcp.server import (
+from jqskill_mcp.server import (
     extract_factors_from_research_impl,
     get_factor_impl,
     lint_strategy_impl,
@@ -24,19 +24,34 @@ from mcp.server import (
 
 def test_list_factors_no_filter():
     out = list_factors_impl()
-    assert len(out) >= 9
-    assert all("name" in f for f in out)
+    # v2.2: list_factors_impl 返回带分页元数据的 dict（total / count / items）
+    assert isinstance(out, dict)
+    assert out["total"] >= 9
+    assert len(out["items"]) >= 9
+    assert all("name" in item for item in out["items"])
 
 
 def test_list_factors_filter_by_category():
     out = list_factors_impl(category="value")
-    assert all(f["category"] == "value" for f in out)
-    assert len(out) >= 1
+    assert out["total"] >= 1
+    assert all(item["category"] == "value" for item in out["items"])
 
 
 def test_list_factors_filter_by_keyword():
     out = list_factors_impl(keyword="PE")
-    assert len(out) >= 1
+    assert out["total"] >= 1
+
+
+def test_list_factors_pagination():
+    page1 = list_factors_impl(limit=3, offset=0)
+    assert len(page1["items"]) == 3
+    assert page1["has_more"] is True
+    assert page1["next_offset"] == 3
+    page2 = list_factors_impl(limit=3, offset=3)
+    # 两页不重复
+    names1 = {x["name"] for x in page1["items"]}
+    names2 = {x["name"] for x in page2["items"]}
+    assert names1.isdisjoint(names2)
 
 
 def test_get_factor_returns_meta_and_source():

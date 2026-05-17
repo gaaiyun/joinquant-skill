@@ -1,26 +1,35 @@
 # joinquant-skill — 开发 / 测试依赖
 # 安装：pip install -r requirements-dev.txt
 #
-# ⚠️ 这不是 "运行时依赖"。本仓库的核心工具仍然遵循「零运行时依赖」原则：
+# 注意：这不是"运行时依赖"。本仓库核心工具仍然遵循「运行时零依赖」原则：
 #
-#   scripts/strategy_lint.py     用 Python 标准库 ast
-#   scripts/strategy_scaffold.py 用 Python 标准库
-#   scripts/api_search.py        用 Python 标准库
+#   scripts/strategy_lint.py     纯 Python 标准库 ast
+#   scripts/strategy_scaffold.py 纯 Python 标准库
+#   scripts/api_search.py        纯 Python 标准库
 #   templates/01-05-*.py         在聚宽云上跑，依赖聚宽 runtime
 #   examples/case-*/strategy.py  同上
 #
 # 下面这些依赖只有在跑 factors/ + factor_lab/ + research_importer/ + tests 时才需要。
 
 # ── 测试 ─────────────────────────────────────────
-pytest>=7.4.0
+# pytest 9.x 行为变化较大，先锁在 8.x 以内
+pytest>=7.4.0,<9.0
 
 # ── 数值计算（factors / factor_lab 用） ─────────
-numpy>=1.24.0
-pandas>=2.0.0
-# scipy 是 pandas.Series.corr(method='spearman') 在内部调用的依赖，
-# factor_lab 的 IC 计算和 grouping 单调性都用 Spearman 秩相关。
-# 聚宽云预装 scipy，本仓库 CI 必须显式装。
-scipy>=1.11.0
+# 加 <3.0 上限：numpy / pandas / scipy 下一代大版本（如 pandas 3.0）
+# 可能引入 breaking change（如 spearman 内部实现切换），届时再单独验证升级。
+numpy>=1.24.0,<3.0
+pandas>=2.0.0,<3.0
+# scipy 是 pandas.Series.corr(method='spearman') 内部调用的依赖，
+# factor_lab 的 IC 与 grouping 单调性都需要。聚宽云预装 scipy，
+# 本仓库 CI 也必须显式安装。
+scipy>=1.11.0,<2.0
+
+# ── MCP server（jqskill_mcp 用） ─────────────────
+# 重写规范化后 server.py 用 Pydantic BaseModel + FastMCP，需要 pydantic 与 mcp。
+# pydantic 2.x 是必需；如果只想跑测试不启动 server，pydantic 单独装即可，mcp 是
+# 可选（test_mcp_server 通过 *_impl 函数绕过 FastMCP 框架）。
+pydantic>=2.0,<3.0
 
 # ── 可选：本地跑聚宽因子库 ──────────────────────
 # 装上后，factors/<x>.compute_local 能真的拉数据。
@@ -32,5 +41,6 @@ scipy>=1.11.0
 # pdfplumber>=0.10   # 适合带表格的研报
 # PyPDF2>=3.0        # 老牌兜底
 
-# ── 可选：MCP server ────────────────────────────
-# mcp>=1.0            # pip install "mcp[cli]"
+# ── 可选：MCP server CLI（实际启动需要）──────────
+# pip install "mcp[cli]"
+# mcp>=1.0,<2.0

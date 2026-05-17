@@ -29,14 +29,26 @@ Method = Literal["pearson", "spearman"]
 class ICReport:
     method: Method
     forward_periods: int
-    ic_series: pd.Series        # index = date, value = IC
+    ic_series: pd.Series         # index = date, value = IC
     ic_mean: float
     ic_std: float
-    ic_ir: float                # IR = mean / std
-    ic_t_stat: float            # t = mean * sqrt(n) / std
-    ic_win_rate: float          # P(IC > 0)
+    ic_ir: float                 # 日频 IC 序列的 IR = mean / std（**未年化**）
+    ic_t_stat: float             # t = mean * sqrt(n) / std
+    ic_win_rate: float           # P(IC > 0)
     ic_positive_n: int
     ic_total_n: int
+
+    def annualized_ir(self, periods_per_year: int = 252) -> float:
+        """把日频 IR 换算成年化 IR：IR × sqrt(periods_per_year / forward_periods)。
+
+        例：日频持有 IR=0.05 → 年化 IR = 0.05 × sqrt(252/1) ≈ 0.79。
+        """
+        if not (self.ic_ir == self.ic_ir):   # NaN check
+            return float("nan")
+        if self.forward_periods <= 0:
+            return float("nan")
+        import math
+        return self.ic_ir * math.sqrt(periods_per_year / self.forward_periods)
 
     def to_dict(self) -> dict:
         return {
@@ -44,7 +56,8 @@ class ICReport:
             "forward_periods": self.forward_periods,
             "ic_mean": self.ic_mean,
             "ic_std": self.ic_std,
-            "ic_ir": self.ic_ir,
+            "ic_ir": self.ic_ir,             # daily/per-period, NOT annualized
+            "ic_ir_annualized": self.annualized_ir(),
             "ic_t_stat": self.ic_t_stat,
             "ic_win_rate": self.ic_win_rate,
             "ic_positive_n": self.ic_positive_n,

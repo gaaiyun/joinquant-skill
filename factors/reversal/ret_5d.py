@@ -32,6 +32,14 @@ META = FactorMeta(
 )
 
 
+def _ret_5d_from_close_panel(close_panel: "pd.DataFrame", universe) -> "pd.Series":
+    """共用核心：拿到 close panel 后算 5 日累计收益；样本不足时返回与 universe 对齐的全 NaN Series。"""
+    if len(close_panel) < 6:
+        # 返回带 index 的全 NaN，让上游能感知"全部缺失"而不是悄悄拿到空 Series
+        return pd.Series(float("nan"), index=list(universe), name="ret_5d")
+    return close_panel.iloc[-1] / close_panel.iloc[0] - 1.0
+
+
 def compute_jq(context, universe):
     """
     手算实现（聚宽云）：用 get_price 拿 6 个交易日 close → 5 日累计收益。
@@ -43,9 +51,7 @@ def compute_jq(context, universe):
     )
     # panel=False 返回 long-format DataFrame，列 [time, code, close]
     close_panel = prices.set_index(["time", "code"])["close"].unstack("code")
-    if len(close_panel) < 6:
-        return pd.Series(dtype=float)
-    return close_panel.iloc[-1] / close_panel.iloc[0] - 1.0
+    return _ret_5d_from_close_panel(close_panel, universe)
 
 
 def compute_local(date, universe):
@@ -56,9 +62,7 @@ def compute_local(date, universe):
         fields=["close"], panel=False, fq="pre", skip_paused=False,
     )
     close_panel = prices.set_index(["time", "code"])["close"].unstack("code")
-    if len(close_panel) < 6:
-        return pd.Series(dtype=float)
-    return close_panel.iloc[-1] / close_panel.iloc[0] - 1.0
+    return _ret_5d_from_close_panel(close_panel, universe)
 
 
 register(FactorEntry(meta=META, compute_jq=compute_jq, compute_local=compute_local,
