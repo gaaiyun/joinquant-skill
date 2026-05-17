@@ -8,7 +8,7 @@
 
 | 模块 | 解决什么 | 入口 |
 |---|---|---|
-| 🧪 [`factors/`](factors/) | Barra 风格 7 大类 9+ 因子的注册表，META 完整含 paper_refs / jq_dependencies / 已知问题 | `from factors import all_factors, by_category, search` |
+| 🧪 [`factors/`](factors/) | 9 个因子的 META 注册表 + 聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values) 包装层。⚠️ **不为聚宽编辑器粘贴而设计**，看 [factors/USAGE.md](factors/USAGE.md) | `from factors import all_factors, resolve`；策略里直接用 `from jqfactor import get_factor_values` |
 | 📊 [`factor_lab/`](factor_lab/) | 单因子 IC / Rank-IC / IR / 衰减 / 分组回测 — 用于在本地 jqdatasdk 数据上做因子研究 | `factor_lab.compute_ic / grouping_backtest` |
 | 📄 [`research_importer/`](research_importer/) | **PDF 研报 → 聚宽策略代码** pipeline：PDF 文本抽取 + LLM prompt 模板（三阶段抽取/归类/自评）+ 自动代码生成 | `python -m research_importer extract <pdf>` |
 | 🔌 [`mcp/`](mcp/) | MCP server — 把整个 skill 暴露成 6 个 tool 给 Claude Desktop / Cursor 调用 | `python -m mcp.server` |
