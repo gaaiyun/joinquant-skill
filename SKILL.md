@@ -145,7 +145,7 @@ For high-stakes (live trading) strategies, additionally:
 | `factors/` | (v2) Barra-style factor library, 7 categories |
 | `factor_lab/` | (v2) Single-factor IC / grouping / decay analysis |
 | `research_importer/` | (v2) Brokerage research PDF → JoinQuant code |
-| `mcp/` | (v2) MCP server exposing all skill capabilities |
+| `jqskill_mcp/` | (v2) MCP server exposing all skill capabilities |
 | `tests/` | pytest (50+ tests passing after v2) |
 
 This skill is at version **0.5.0** as of 2026-04-19. All 14 references + 5 templates + 3 scripts + 13 tests + WORKFLOW + 2 examples complete.

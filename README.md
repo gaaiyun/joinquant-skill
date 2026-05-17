@@ -1,20 +1,20 @@
 # JoinQuant Skill
 
-让 AI agent（Cursor / Claude Code / Codex / OpenCode 等）能正确生成符合 **聚宽（JoinQuant）平台** 的量化策略代码。
+让 AI agent（Cursor / Claude Code / Codex / OpenCode 等）能正确生成符合**聚宽（JoinQuant）平台**的量化策略代码。
 
-不是教 AI 做策略——是给 AI 一份**完整的、AI 友好的 API 知识库 + 策略模板 + lint 工具 + 因子库 + 研报复现 pipeline + MCP server**，让它生成的代码能直接复制到聚宽编辑器跑通。
+它不是教 AI 做策略，而是给 AI 一份结构化的 API 知识库、可粘贴运行的策略模板和静态检查工具，让生成结果能直接复制进聚宽 Web 编辑器跑通。v2 又在此之上补齐了因子注册表、单因子分析工具、研报抽取流水线和 MCP server。
 
-## v2 新增能力
+## v2 新增模块
 
-| 模块 | 解决什么 | 入口 |
+| 模块 | 用途 | 与聚宽编辑器的关系 |
 |---|---|---|
-| 🧪 [`factors/`](factors/) | 9 个因子的 META 注册表 + 聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values) 包装层。⚠️ **不为聚宽编辑器粘贴而设计**，看 [factors/USAGE.md](factors/USAGE.md) | `from factors import all_factors, resolve`；策略里直接用 `from jqfactor import get_factor_values` |
-| 📊 [`factor_lab/`](factor_lab/) | 单因子 IC / Rank-IC / IR / 衰减 / 分组回测 — 用于在本地 jqdatasdk 数据上做因子研究 | `factor_lab.compute_ic / grouping_backtest` |
-| 📄 [`research_importer/`](research_importer/) | **PDF 研报 → 聚宽策略代码** pipeline：PDF 文本抽取 + LLM prompt 模板（三阶段抽取/归类/自评）+ 自动代码生成 | `python -m research_importer extract <pdf>` |
-| 🔌 [`mcp/`](mcp/) | MCP server — 把整个 skill 暴露成 6 个 tool 给 Claude Desktop / Cursor 调用 | `python -m mcp.server` |
-| 🛠️ [`scripts/strategy_lint.py`](scripts/strategy_lint.py) v2 | 新增 **JQ005 白名单检查**（strict 模式）+ 扩充 hallucination 黑名单到 25+ 条 + 文档说明对齐实现 | `python scripts/strategy_lint.py x.py --strict` |
+| [`factors/`](factors/) | 因子注册表与元数据库。包含 9 个示例因子，覆盖 value / momentum / quality / growth / size / volatility / reversal 七类，每个因子都附原始文献引用、聚宽 factor id 映射、推荐中性化协变量、已知陷阱。底层调用聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values) 而不是手算字段。 | 不能整体粘贴到聚宽编辑器（含子目录 import），但单个因子的 `compute_jq` 函数体可以摘出来直接用。详细边界见 [`factors/USAGE.md`](factors/USAGE.md)。 |
+| [`factor_lab/`](factor_lab/) | 单因子分析工具：IC、Rank-IC、信息比率（日频）、IC 衰减、五分组回测、多空 Sharpe、单调性评分。 | 仅用于本地研究，配合 jqdatasdk 拉到本地的数据。 |
+| [`research_importer/`](research_importer/) | 研报 PDF 抽取流水线：PDF 文本抽取 → LLM 抽取 prompt（system + user）→ ExtractedStrategy schema → 聚宽策略代码生成。流水线本身不调用任何 LLM，prompt 与 schema 都交给上层应用调度。 | 生成结果就是可粘贴的聚宽策略文件；流水线本身只是开发期工具。 |
+| [`jqskill_mcp/`](jqskill_mcp/) | MCP server，把上述能力暴露成 7 个 tool 给 Claude Desktop、Cursor 等 MCP 客户端调用。所有工具都标注为 `readOnlyHint=True`，用 Pydantic 校验输入。包名特意叫 `jqskill_mcp` 而不是 `mcp`，避免与 [官方 `mcp` 包](https://pypi.org/project/mcp/) 冲突。 | 不适用——这是 IDE/agent 端的服务。 |
+| [`scripts/strategy_lint.py`](scripts/strategy_lint.py) v2 升级 | 新增 JQ005 白名单严格模式（`--strict`），把 hallucination 黑名单从 9 条扩到 25 条，文档对照真实实现。 | 跑在本地的 Python 静态检查工具，不入聚宽云。 |
 
-**研报复现免责声明**：[`research_importer/disclaimer.md`](research_importer/disclaimer.md)。简单说：仓库内不含任何研报正文；用户自己上传 PDF 副本，自负版权责任。
+研报抽取功能涉及版权边界，详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)：仓库内不含任何研报正文，用户需自备合法获取的 PDF 副本。
 
 ---
 
@@ -170,7 +170,7 @@ joinquant-skill/
 ├── factors/                         (v2 新增) Barra 风格 7 大类因子库
 ├── factor_lab/                      (v2 新增) 单因子 IC / 分组 / 衰减分析
 ├── research_importer/               (v2 新增) 研报 PDF → 聚宽策略代码
-├── mcp/                             (v2 新增) MCP server（让任何 MCP 客户端调用本 skill）
+├── jqskill_mcp/                     (v2 新增) MCP server（让任何 MCP 客户端调用本 skill）
 └── tests/                           pytest 测试套件
 ```
 

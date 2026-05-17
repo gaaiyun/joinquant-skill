@@ -6,13 +6,15 @@ from factors._base import FactorEntry, FactorMeta, register
 
 META = FactorMeta(
     name="log_market_cap",
-    chinese_name="对数总市值 (CNE5 SIZE)",
+    chinese_name="CNE5 标准化市值 SIZE",
     category="size",
     description=(
-        "log(总市值)。小盘股长周期超额收益（A 股尤其显著）。"
-        "聚宽 CNE5 SIZE = ln(总市值)，已经做了标准化。"
-        "本因子为「**小盘正向**」 — direction=descending（SIZE 越低 → 收益越高）。"
-        "也常作为协变量做中性化（中性化时 direction 不影响）。"
+        "聚宽 CNE5 风格因子 SIZE。"
+        "**重要：聚宽返回的 SIZE 是横截面 z-score 标准化后的 ln(总市值)**，"
+        "不是原始 ln(market_cap)；该值横截面均值约为 0、std 约为 1。"
+        "如果只想拿原始 ln(总市值)，请直接用 valuation.market_cap 自行计算。"
+        "小盘股长周期超额收益（A 股尤其显著），direction=descending —— "
+        "SIZE 越低（小盘）预期收益越高。常用作中性化协变量。"
     ),
     paper_refs=(
         "Banz (1981) The Relationship Between Return and Market Value of Common Stocks",
@@ -20,10 +22,11 @@ META = FactorMeta(
     ),
     direction="descending",
     jq_dependencies=("jqfactor.SIZE",),
-    recommended_neutralization=(),
+    recommended_neutralization=(),   # SIZE 本身就是 z-score 后的值，无须二次标准化
     known_issues=(
+        "聚宽 SIZE 是已标准化后的值，不是原始 ln(market_cap)——名字虽叫 log_market_cap，实际取值与一般定义有偏差",
         "A 股 2017-2019 大盘股行情下小盘因子失效",
-        "中证 1000 / 2000 之外的小票流动性差，需要剔除",
+        "中证 1000 / 2000 之外的小票流动性差，建议先剔除",
     ),
 )
 

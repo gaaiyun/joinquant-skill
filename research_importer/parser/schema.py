@@ -75,7 +75,36 @@ class ExtractedStrategy:
 
     @classmethod
     def from_dict(cls, d: dict) -> "ExtractedStrategy":
-        primary = [ExtractedFactor(**f) for f in d.get("primary_factors", [])]
-        secondary = [ExtractedFactor(**f) for f in d.get("secondary_factors", [])]
-        meta = {k: v for k, v in d.items() if k not in {"primary_factors", "secondary_factors"}}
+        """容错的反序列化：忽略未知字段、为缺失的必填字段补默认值。
+
+        LLM 输出的 JSON 经常带额外的 ``reasoning_steps`` / ``metadata`` 等键，
+        或者漏掉 ``rebalance_freq`` 等必填字段。本方法做两件事：
+
+        1. 用 ``dataclasses.fields`` 过滤掉未知 key，避免 TypeError；
+        2. 对必填字段补默认值（空字符串或 "monthly"），保证 LLM 出错时
+           pipeline 不会整体崩。
+        """
+        import dataclasses
+
+        factor_fields = {f.name for f in dataclasses.fields(ExtractedFactor)}
+        primary = [
+            ExtractedFactor(**{k: v for k, v in f.items() if k in factor_fields})
+            for f in d.get("primary_factors", [])
+        ]
+        secondary = [
+            ExtractedFactor(**{k: v for k, v in f.items() if k in factor_fields})
+            for f in d.get("secondary_factors", [])
+        ]
+
+        strategy_fields = {f.name for f in dataclasses.fields(cls)}
+        meta = {
+            k: v for k, v in d.items()
+            if k in strategy_fields and k not in {"primary_factors", "secondary_factors"}
+        }
+        # 必填字段（无默认值）缺失时给最小可用默认
+        meta.setdefault("title", "")
+        meta.setdefault("source", "")
+        meta.setdefault("universe", "")
+        meta.setdefault("rebalance_freq", "monthly")
+
         return cls(primary_factors=primary, secondary_factors=secondary, **meta)
