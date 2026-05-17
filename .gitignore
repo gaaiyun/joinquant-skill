@@ -29,3 +29,7 @@ my-strategies/
 # OS
 .DS_Store
 Thumbs.db
+
+# 临时 commit message 文件（用 git commit -F 时的中转）
+.commit_msg.tmp
+*.commit_msg.tmp
