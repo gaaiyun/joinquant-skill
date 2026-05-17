@@ -1,0 +1,32 @@
+# joinquant-skill — 开发 / 测试依赖
+# 安装：pip install -r requirements-dev.txt
+#
+# ⚠️ 这不是 "运行时依赖"。本仓库的核心工具仍然遵循「零运行时依赖」原则：
+#
+#   scripts/strategy_lint.py     用 Python 标准库 ast
+#   scripts/strategy_scaffold.py 用 Python 标准库
+#   scripts/api_search.py        用 Python 标准库
+#   templates/01-05-*.py         在聚宽云上跑，依赖聚宽 runtime
+#   examples/case-*/strategy.py  同上
+#
+# 下面这些依赖只有在跑 factors/ + factor_lab/ + research_importer/ + tests 时才需要。
+
+# ── 测试 ─────────────────────────────────────────
+pytest>=7.4.0
+
+# ── 数值计算（factors / factor_lab 用） ─────────
+numpy>=1.24.0
+pandas>=2.0.0
+
+# ── 可选：本地跑聚宽因子库 ──────────────────────
+# 装上后，factors/<x>.compute_local 能真的拉数据。
+# 需要先去 https://www.joinquant.com 申请 jqdatasdk 账号 + auth。
+# jqdatasdk>=1.8
+
+# ── 可选：研报 PDF 抽取 ──────────────────────────
+# pypdfium2>=4.0     # 推荐：Google 维护、对中文友好
+# pdfplumber>=0.10   # 适合带表格的研报
+# PyPDF2>=3.0        # 老牌兜底
+
+# ── 可选：MCP server ────────────────────────────
+# mcp>=1.0            # pip install "mcp[cli]"
