@@ -4,10 +4,15 @@
 
 ## 1. 项目位置
 
-| 路径 | 说明 |
-|---|---|
-| `G:\joinquant skill\` | **主项目目录** |
-| `G:\joinquant skill\api文档\api.txt` | 官方 API 完整文档（294KB，原始备份） |
+把仓库 clone 到你喜欢的目录（**避免目录名带空格**，否则部分命令会失败）：
+
+```powershell
+# 例：放到 D:\projects
+cd D:\projects
+git clone https://github.com/gaaiyun/joinquant-skill.git
+```
+
+之后所有命令里 `$PROJECT_DIR` 即指这个 `D:\projects\joinquant-skill`。
 
 ## 2. Python 环境
 
@@ -28,9 +33,12 @@ pip install pytest
 
 ### 方式 1：junction 链接（推荐）
 
+先 `cd` 到你 clone 的目录，然后用 `$PWD` 引用绝对路径（**不要把路径硬编码**）：
+
 ```powershell
-cmd /c mklink /J "C:\Users\$env:USERNAME\.cursor\skills\joinquant-skill" "G:\joinquant skill"
-cmd /c mklink /J "C:\Users\$env:USERNAME\.claude\skills\joinquant-skill" "G:\joinquant skill"
+cd D:\projects\joinquant-skill          # 你 clone 的路径
+cmd /c mklink /J "$env:USERPROFILE\.cursor\skills\joinquant-skill" "$PWD"
+cmd /c mklink /J "$env:USERPROFILE\.claude\skills\joinquant-skill" "$PWD"
 ```
 
 junction 不占空间，编辑主目录两边自动同步。
@@ -66,7 +74,7 @@ Cursor / Claude Code 会自动读 SKILL.md 路由到对应的 references 和模�
 ### 列出可用模板
 
 ```powershell
-cd "G:\joinquant skill"
+cd D:\projects\joinquant-skill           # 替换成你 clone 的路径
 python scripts\strategy_scaffold.py --list
 ```
 
@@ -113,7 +121,7 @@ pip install pytest
 python -m pytest tests -v
 ```
 
-应该看到 9+ 个测试全部 PASS。
+应该看到 13 个测试（v2 加了因子库 / factor_lab / research_importer / MCP server 后会更多）全部 PASS。
 
 ## 7. 完整流程示例：从想法到上线
 
