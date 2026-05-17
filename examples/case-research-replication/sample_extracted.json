@@ -1,0 +1,69 @@
+{
+  "title": "基于盈利质量与动量的多因子选股模型",
+  "source": "示例证券《选股因子系列：质量动量》2024-09",
+  "rebalance_freq": "monthly",
+  "universe": "中证 800 剔除 ST 与停牌",
+  "primary_factors": [
+    {
+      "name": "roe_ttm",
+      "chinese_name": "TTM ROE",
+      "category": "quality",
+      "definition": "TTM 归母净利润 / 平均净资产；衡量股东资金运用效率",
+      "formula": "ROE_TTM = NetIncome_TTM / AvgEquity",
+      "weight": 0.4,
+      "direction": "ascending",
+      "paper_excerpts": [
+        "质量端使用 ROE_TTM 作为核心因子"
+      ],
+      "jq_dependencies_guess": [
+        "indicator.roe"
+      ]
+    },
+    {
+      "name": "ret_12m_skip_1m",
+      "chinese_name": "12 月动量剔近 1 月",
+      "category": "momentum",
+      "definition": "过去 252 个交易日到 21 个交易日前的累计收益率，剔近 1 月避免短期反转污染",
+      "formula": "ret_{-21} / ret_{-252} - 1",
+      "weight": 0.3,
+      "direction": "ascending",
+      "paper_excerpts": [
+        "动量端使用 12-1 形式的累计收益"
+      ],
+      "jq_dependencies_guess": [
+        "get_price"
+      ]
+    },
+    {
+      "name": "pe_ttm_inverse",
+      "chinese_name": "TTM EP",
+      "category": "value",
+      "definition": "净利润 TTM / 总市值",
+      "formula": "EP = 1 / PE_TTM",
+      "weight": 0.3,
+      "direction": "ascending",
+      "paper_excerpts": [
+        "估值端使用 E/P 控制估值偏离"
+      ],
+      "jq_dependencies_guess": [
+        "valuation.pe_ratio"
+      ]
+    }
+  ],
+  "secondary_factors": [],
+  "benchmark": "000906.XSHG",
+  "fee_rate": 0.0003,
+  "slippage": 0.002,
+  "risk_constraints": [
+    "单股权重 <= 3%",
+    "行业暴露偏离基准 <= 1 sigma",
+    "组合月换手 <= 50%"
+  ],
+  "paper_excerpts": [
+    "我们以中证 800 为基础股票池，每月末调仓",
+    "组合内单股权重不超过 3%，行业偏离限制在 1 倍标准差内"
+  ],
+  "extracted_at": "2024-09-15T10:00:00",
+  "llm_model": "claude-sonnet-4.6",
+  "confidence": 0.85
+}

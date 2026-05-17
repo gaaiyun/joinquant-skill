@@ -38,8 +38,16 @@ jobs:
             python scripts/strategy_lint.py "$f" || exit 1
           done
 
-      - name: Lint examples/case-*/strategy.py (dogfood)
+      - name: Lint examples (dogfood)
         run: |
-          for f in examples/case-*/strategy.py; do
+          for f in examples/case-*/strategy.py examples/case-*/sample_strategy.py; do
+            [ -f "$f" ] || continue
             python scripts/strategy_lint.py "$f" || exit 1
           done
+
+      - name: Smoke-test research_importer CLI
+        run: |
+          python -m research_importer codegen \
+            examples/case-research-replication/sample_extracted.json \
+            -o /tmp/jqskill_ci_strategy
+          python scripts/strategy_lint.py /tmp/jqskill_ci_strategy/strategy.py

@@ -132,6 +132,102 @@ python scripts/strategy_lint.py your_strategy.py
 | 生成策略骨架 | `strategy_scaffold.py` | `python scripts/strategy_scaffold.py --type rotation --security "510300.XSHG,159915.XSHE"` |
 | 检查代码质量 | `strategy_lint.py` | `python scripts/strategy_lint.py my_strategy.py` |
 | 搜索 API 用法 | `api_search.py` | `python scripts/api_search.py get_price` |
+| 列出因子库 | `factors` 模块 | `python -c "import factors; print([e.meta.name for e in factors.all_factors()])"` |
+| 单因子 IC / 分组分析 | `factor_lab` | `python -c "from factor_lab import compute_ic"` |
+| 研报 PDF → 聚宽策略 | `research_importer` CLI | `python -m research_importer pipeline report.pdf -o out/` |
+| akshare 抓某股票研报清单 | `research_importer fetch` | `python -m research_importer fetch --code 600519 --limit 5` |
+| 启动 MCP server（给 Claude Desktop 等用） | `jqskill_mcp` | `python -m jqskill_mcp.server` |
+
+---
+
+## 研报复现工作流（v2 新增）
+
+把券商研报里的多因子策略变成可在聚宽编辑器跑通的代码，分两种入口：
+
+### 入口 A：自己有 PDF
+
+```
+report.pdf
+   │
+   │  python -m research_importer extract report.pdf -o out/01_text.txt
+   ▼
+out/01_text.txt （去页眉页脚的正文）
+   │
+   │  python -m research_importer build-prompt out/01_text.txt -o out/02_prompt.json
+   ▼
+out/02_prompt.json （含 system_prompt + user_prompt）
+   │
+   │  你把 prompt 粘到 Claude / GPT，把模型回的 JSON 存为 out/03_extracted.json
+   ▼
+out/03_extracted.json （ExtractedStrategy 结构）
+   │
+   │  python -m research_importer codegen out/03_extracted.json -o out/strategy/
+   ▼
+out/strategy/strategy.py + _meta.yaml （可粘到聚宽 Web 编辑器）
+```
+
+或者一条龙：
+
+```bash
+python -m research_importer pipeline report.pdf -o out/ \
+    --source "中信证券《选股因子系列》2024-09"
+```
+
+会写入 `01_extracted_text.txt` / `02_llm_prompt.json`，提示你调 LLM 拿 JSON，存回后重跑 `codegen` 完成。
+
+### 入口 B：用 akshare 抓研报清单
+
+不用 PDF，直接从公开渠道拉某股票的研报摘要（标题 / 机构 / 评级 / 目标价 / 摘要）：
+
+```bash
+pip install akshare   # 一次性
+python -m research_importer fetch --code 600519 --limit 5 -o out/00_reports.txt
+```
+
+输出文件按发布日期倒序，每篇研报用 `=` 分隔线分开。挑一篇感兴趣的摘出来后，走入口 A 的 Step 2-4。
+
+> **重要**：akshare 抓的是摘要，**不是付费 PDF 全文**。仓库本身不内置任何研报正文；版权边界详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)。
+
+### 完整 case 演示
+
+[`examples/case-research-replication/`](examples/case-research-replication/) 包含一个端到端走完的样例（含 `sample_extracted.json` 与 `sample_strategy.py`），可以照着抄。
+
+---
+
+## 因子研究工作流（v2 新增）
+
+在本地用 `jqdatasdk` 拉数据，跑单因子 IC / 分组回测：
+
+```python
+from jqdatasdk import auth, get_index_stocks, get_price
+from factors import get as get_factor
+from factor_lab import compute_ic, grouping_backtest
+
+auth('your_jq_user', 'your_jq_pwd')
+
+# 1) 拿股票池
+stocks = get_index_stocks('000906.XSHG', '2024-06-30')   # 中证 800 历史成分
+
+# 2) 横截面拉一个因子（注：本地需先 auth jqdatasdk）
+entry = get_factor('roe_ttm')
+factor_series = entry.compute_local('2024-06-30', stocks)
+
+# 3) 构造 panel 数据 + 前向收益
+# 略：你需要按日期循环拉 factor / forward returns，组成 DataFrame[date × stock]
+
+# 4) IC 分析
+report = compute_ic(factor_panel, forward_returns_panel, method='spearman')
+print(f"IC mean = {report.ic_mean:.4f}")
+print(f"IC IR (日频) = {report.ic_ir:.4f}")
+print(f"IC IR (年化) = {report.annualized_ir():.4f}")
+
+# 5) 五分组回测
+gb = grouping_backtest(factor_panel, forward_returns_panel, n_groups=5)
+print(f"多空 Sharpe = {gb.long_short_sharpe:.2f}")
+print(f"单调性评分 = {gb.monotonicity_score:.2f}")
+```
+
+[`factors/USAGE.md`](factors/USAGE.md) 列出了本仓库 9 个因子与聚宽官方 factor id 的对照表，以及「本模块不能整体粘到聚宽编辑器」的边界声明。
 
 ---
 

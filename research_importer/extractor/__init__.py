@@ -4,3 +4,9 @@ from research_importer.extractor.pdf import (  # noqa: F401
     clean_text,
     extract_text,
 )
+from research_importer.extractor.akshare_loader import (  # noqa: F401
+    AkshareNotInstalled,
+    ResearchReportSummary,
+    fetch_stock_reports,
+    summary_to_extractable_text,
+)
