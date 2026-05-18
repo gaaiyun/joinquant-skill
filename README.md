@@ -26,11 +26,9 @@
 | [`factors/`](factors/) | 9 个示例因子的注册表（value / momentum / quality / growth / size / volatility / reversal 七类）。每个因子带文献引用、聚宽官方 factor id 映射、推荐中性化协变量、已知陷阱。底层调聚宽官方 [`get_factor_values`](https://www.joinquant.com/help/api/help?name=factor_values)，不重写计算。 | `from factors import all_factors, get, resolve`；策略里直接用 `from jqfactor import get_factor_values` | 否（含子目录 import）。单个因子的 `compute_jq` 函数体可摘出来用，边界见 [`factors/USAGE.md`](factors/USAGE.md) |
 | [`factor_lab/`](factor_lab/) | 单因子分析工具：IC / Rank-IC / 日频 IR / 衰减、五分组回测、多空 Sharpe、单调性评分。 | `from factor_lab import compute_ic, grouping_backtest`，配合本地 jqdatasdk 数据 | 否，本地研究专用 |
 | [`research_importer/`](research_importer/) | 研报 PDF → 聚宽策略代码端到端流水线：PDF 抽取（3 后端 fallback）→ akshare 抓研报清单 → LLM prompt 构造 → ExtractedStrategy schema → 自动生成可粘贴的聚宽 `.py`。**流水线本身不调任何 LLM**——把 prompt 还给你，你用自己的 key 调。 | `python -m research_importer pipeline report.pdf -o out/` 或 `python -m research_importer fetch --code 600519` | 生成的策略可粘聚宽；流水线工具不入聚宽 |
-| [`jqskill_mcp/`](jqskill_mcp/) | MCP server，把上述能力（除 references 以外）暴露成 7 个 tool 给 Claude Desktop / Cursor 等 MCP 客户端调用。工具命名统一加 `jq_` 前缀避免冲突，输入用 Pydantic 校验，全部 `readOnlyHint=True`。 | `python -m jqskill_mcp.server`；客户端配置见 [`jqskill_mcp/server.py`](jqskill_mcp/server.py) 顶部 docstring | — IDE/agent 端服务 |
+| [`jqskill_mcp/`](jqskill_mcp/) | MCP server，把上述能力暴露成 `jq_*` 一组 tool 给 Claude Desktop、Cursor 等 MCP 客户端调用。工具输入用 Pydantic 校验，全部只读。 | `python -m jqskill_mcp.server`；客户端配置见 [`jqskill_mcp/server.py`](jqskill_mcp/server.py) 顶部 docstring | — 客户端服务 |
 
-> 包名特意叫 `jqskill_mcp` 而不是 `mcp`，避免与 PyPI 上的官方 [`mcp`](https://pypi.org/project/mcp/) 包冲突（曾因此踩坑见 `.review_workspace/audit_tests_and_engineering.md`）。
-
-研报功能涉及版权边界，详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)：**仓库内不含任何研报正文**；akshare 抓的是公开摘要而非付费 PDF；用户自备 PDF 副本自负版权责任。
+研报功能涉及版权边界，详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)：仓库内不含任何研报正文；akshare 抓的是公开摘要而非付费 PDF；自备 PDF 自负版权责任。
 
 ## 三、三条典型工作流
 
@@ -111,7 +109,7 @@ print(gb.long_short_sharpe, gb.monotonicity_score)
 | [`brainbytes-dev/everything-claude-trading`](https://github.com/brainbytes-dev/everything-claude-trading) | 18 agents + 82 skills 通用量化系统 | 它做全栈，我们做窄而深 |
 | [`microsoft/RD-Agent`](https://github.com/microsoft/RD-Agent) | 通用多 agent factor-model co-optimization | 它针对 qlib 平台，我们针对聚宽 + 给 AI 的 Skill 形态 |
 
-核心差异：我们专注**单一平台的 API 准确性**——让 AI 生成的代码不需要改就能粘到聚宽编辑器跑通，并把这条主线延伸到「研报 → 策略」和「单因子分析」两个相邻场景。
+本仓库聚焦聚宽平台的 API 准确性，目标是让 AI 生成的代码不用改就能粘到聚宽编辑器跑通；研报抽取与因子分析是这条主线上的两个延伸场景。
 
 ---
 
@@ -186,7 +184,7 @@ Claude Desktop 的 `claude_desktop_config.json` 配置：
 }
 ```
 
-启动后客户端能看到 7 个 `jq_*` 工具：`jq_list_factors` / `jq_get_factor` / `jq_resolve_factor_id` / `jq_lint_strategy` / `jq_scaffold_strategy` / `jq_search_api` / `jq_build_research_extract_prompt`。
+启动后客户端可以看到一组 `jq_*` 工具（列因子、查因子元数据、lint 策略代码、生成骨架、搜 API、构造研报抽取 prompt 等），完整签名见 [`jqskill_mcp/server.py`](jqskill_mcp/server.py)。
 
 ---
 
@@ -232,15 +230,15 @@ joinquant-skill/
 │   └── disclaimer.md               版权边界声明
 │
 ├── jqskill_mcp/                    MCP server
-│   └── server.py                   7 个 jq_* tool（Pydantic 输入校验 + readOnlyHint）
+│   └── server.py                   一组 jq_* tool（Pydantic 输入校验 + readOnlyHint）
 │
 ├── examples/
-│   ├── case-mean-reversion/        完整案例：RSI 均值回归
-│   ├── case-etf-rotation/          完整案例：ETF 月度轮动
-│   ├── case-research-replication/  完整案例：研报 → 聚宽策略 端到端 walkthrough（v2.3 新增）
-│   └── bad-strategy-for-lint-test.py 反例集合（给 lint 自测用）
+│   ├── case-mean-reversion/        RSI 均值回归
+│   ├── case-etf-rotation/          ETF 月度轮动
+│   ├── case-research-replication/  研报 → 聚宽策略 端到端 walkthrough
+│   └── bad-strategy-for-lint-test.py 给 lint 自测用的反例集合
 │
-├── tests/                          pytest 测试（120+ 个，CI 在 4 个 Py 版本上跑）
+├── tests/                          pytest 测试套件
 └── .github/workflows/ci.yml        CI：pytest + dogfood lint templates / examples
 ```
 
@@ -260,15 +258,14 @@ joinquant-skill/
 
 ---
 
-## 八、版本与文档
+## 八、相关文档
 
-- 当前主分支 = v2.3（CI 在 Python 3.10–3.13 全绿）
-- 完整工作流文档：[`WORKFLOW.md`](WORKFLOW.md)
-- Cursor / Claude Code skill 入口：[`SKILL.md`](SKILL.md)
-- Windows 中文安装指南：[`INSTALL_CN.md`](INSTALL_CN.md)
-- 因子模块边界声明：[`factors/USAGE.md`](factors/USAGE.md)
-- 研报版权声明：[`research_importer/disclaimer.md`](research_importer/disclaimer.md)
-- 完整研报复现 walkthrough：[`examples/case-research-replication/`](examples/case-research-replication/)
+- [`WORKFLOW.md`](WORKFLOW.md) — 三条工作流的完整步骤与命令
+- [`SKILL.md`](SKILL.md) — Cursor / Claude Code 用的 skill 入口
+- [`INSTALL_CN.md`](INSTALL_CN.md) — Windows 安装指南
+- [`factors/USAGE.md`](factors/USAGE.md) — factors 模块与聚宽编辑器的边界声明
+- [`research_importer/disclaimer.md`](research_importer/disclaimer.md) — 研报功能版权声明
+- [`examples/case-research-replication/`](examples/case-research-replication/) — 研报复现端到端 walkthrough
 
 ---
 

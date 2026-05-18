@@ -140,7 +140,7 @@ python scripts/strategy_lint.py your_strategy.py
 
 ---
 
-## 研报复现工作流（v2 新增）
+## 研报复现工作流
 
 把券商研报里的多因子策略变成可在聚宽编辑器跑通的代码，分两种入口：
 
@@ -186,15 +186,15 @@ python -m research_importer fetch --code 600519 --limit 5 -o out/00_reports.txt
 
 输出文件按发布日期倒序，每篇研报用 `=` 分隔线分开。挑一篇感兴趣的摘出来后，走入口 A 的 Step 2-4。
 
-> **重要**：akshare 抓的是摘要，**不是付费 PDF 全文**。仓库本身不内置任何研报正文；版权边界详见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)。
+akshare 拿到的是摘要而非付费 PDF 全文。仓库本身不内置任何研报正文，版权边界见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)。
 
 ### 完整 case 演示
 
-[`examples/case-research-replication/`](examples/case-research-replication/) 包含一个端到端走完的样例（含 `sample_extracted.json` 与 `sample_strategy.py`），可以照着抄。
+[`examples/case-research-replication/`](examples/case-research-replication/) 含端到端走完的样例（`sample_extracted.json` 与 `sample_strategy.py`）。
 
 ---
 
-## 因子研究工作流（v2 新增）
+## 因子研究工作流
 
 在本地用 `jqdatasdk` 拉数据，跑单因子 IC / 分组回测：
 
