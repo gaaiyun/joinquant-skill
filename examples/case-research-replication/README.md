@@ -1,12 +1,11 @@
-# Case：研报复现端到端 walkthrough
+# 研报复现端到端 walkthrough
 
-> 演示用 ``research_importer`` 把一份券商研报变成可在聚宽编辑器跑通的策略
-> 代码。本目录里有完整工件，可以照着抄。
+用 `research_importer` 把一份券商研报变成可在聚宽编辑器跑通的策略代码。本目录含完整工件可以照抄。
 
-本 case 同时演示**两条入口**：
+两条入口：
 
-A. **自备 PDF**：你已经有了研报 PDF 副本（券商客户端下载的）。
-B. **akshare 抓清单**：用 ``akshare`` 拉某股票最近的研报摘要（无需 PDF）。
+- 入口 A：自备 PDF（你已经从券商客户端下到了研报 PDF）
+- 入口 B：用 akshare 拉某股票最近的研报摘要清单（不需要 PDF）
 
 ---
 
@@ -45,7 +44,7 @@ prompt 设计参考了
 
 把那段 JSON 存为 ``out/03_extracted.json``（参考本目录的 ``sample_extracted.json``）。
 
-> 本工具不直接调 LLM——你的 API key 自己掌握，cost 自己控制。
+本工具不内置 LLM 调用，API key 由你自己掌握。
 
 ### Step 4 — 生成策略代码
 
@@ -90,9 +89,7 @@ python -m research_importer pipeline /path/to/citic_factor_2024.pdf \
 
 ## 入口 B：用 akshare 抓研报清单
 
-适合"我对 600519（贵州茅台）最近的研报观点感兴趣，想批量做"。akshare 拿
-到的是**研报标题 + 摘要 + 评级 + 目标价**等元数据，**不是 PDF 全文**——
-但摘要里通常已包含核心投资逻辑与因子，足够 LLM 抽出 ``ExtractedStrategy``。
+适合「对 600519（贵州茅台）最近的研报观点感兴趣，想批量看」这类场景。akshare 拿到的是研报标题、摘要、评级、目标价等元数据，不是 PDF 全文，但摘要中通常已包含核心投资逻辑与因子，足够 LLM 抽出 `ExtractedStrategy`。
 
 ### Step 1 — 抓清单
 
@@ -130,13 +127,9 @@ python -m research_importer codegen out/03_extracted.json -o out/strategy/
 
 ## 合规边界
 
-- 本仓库**不内置**任何券商研报正文；
-- ``research_importer.extractor.akshare_loader`` 只调 ``akshare`` 公开接口，
-  返回的是东方财富等公开摘要，**不会绕过付费墙下载 PDF**；
-- 若你打算**对外发表**「我复现了 XX 券商 XX 研报的策略」，请：
-  - 用自己的话改写策略描述，不直接搬运研报原文；
-  - 注明研报出处（券商 + 标题 + 日期）；
-  - 不展示 PDF 完整截图。
+- 本仓库不内置任何券商研报正文。
+- `research_importer.extractor.akshare_loader` 只调 akshare 公开接口，返回的是东方财富等公开摘要，不会绕过付费墙下载 PDF。
+- 若打算对外发表「复现了某券商某研报的策略」，请用自己的话改写策略描述、注明研报出处（券商 + 标题 + 日期）、不展示 PDF 完整截图。
 
 详细见 [research_importer/disclaimer.md](../../research_importer/disclaimer.md)。
 
