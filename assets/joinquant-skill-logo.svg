@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">JoinQuant Skill logo</title>
+  <desc id="desc">A strategy document connected to data nodes, with an upward price curve and a verification check.</desc>
+
+  <rect x="48" y="28" width="160" height="200" rx="28" fill="#f6f8fa" stroke="#0d1b2a" stroke-width="10"/>
+
+  <path d="M29 82h28M29 128h28M29 174h28M199 82h28M199 128h28M199 174h28" fill="none" stroke="#0a7f73" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="24" cy="82" r="8" fill="#0a7f73"/>
+  <circle cx="24" cy="128" r="8" fill="#0a7f73"/>
+  <circle cx="24" cy="174" r="8" fill="#0a7f73"/>
+  <circle cx="232" cy="82" r="8" fill="#0a7f73"/>
+  <circle cx="232" cy="128" r="8" fill="#0a7f73"/>
+  <circle cx="232" cy="174" r="8" fill="#0a7f73"/>
+
+  <path d="M76 81h34M76 105h21" fill="none" stroke="#0d1b2a" stroke-width="9" stroke-linecap="round"/>
+  <path d="M78 174l30-30 22 17 46-54" fill="none" stroke="#0969da" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="78" cy="174" r="7" fill="#0969da"/>
+  <circle cx="108" cy="144" r="7" fill="#0969da"/>
+  <circle cx="130" cy="161" r="7" fill="#0969da"/>
+  <circle cx="176" cy="107" r="7" fill="#0969da"/>
+
+  <path d="M151 172l16 16 31-36" fill="none" stroke="#0a7f73" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

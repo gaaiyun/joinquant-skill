@@ -1,0 +1,40 @@
+name: Update star history
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: star-history
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Render charts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python scripts/update_star_history.py --repo "$GITHUB_REPOSITORY" --output-dir assets
+
+      - name: Commit updated charts
+        run: |
+          git add assets/star-history-light.svg assets/star-history-dark.svg
+          if git diff --cached --quiet; then
+            echo "Star history is unchanged."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: 更新 Star 历史图 [skip ci]"
+          git push
