@@ -30,7 +30,7 @@ def initialize(context):
     g.factor_native_ids = {'roe_ttm': 'ROE_TTM', 'ret_12m_skip_1m': 'MOMENTUM', 'pe_ttm_inverse': 'EP'}    # 本仓库因子名 → 聚宽 factor id
 
     # 调仓调度
-    run_monthly(rebalance, 1, time='0930')
+    run_monthly(rebalance, 1, time='09:31')
 
 
 def _get_universe(context):
@@ -43,7 +43,7 @@ def _get_universe(context):
 
 
 def _compute_factor_scores(context, stocks):
-    """从聚宽官方因子库一次拉所有 native 因子；非 native 因子留作 TODO。"""
+    """从聚宽官方因子库拉 native 因子；已支持的非 native 因子用手算实现。"""
     df = pd.DataFrame(index=stocks)
 
     # 一次性拉 native 因子（end_date=context.previous_date 避免未来函数）
@@ -67,8 +67,13 @@ def _compute_factor_scores(context, stocks):
 
     # 标准化每个因子（rank + zscore），按方向调正
     scores = pd.Series(0.0, index=stocks)
+    valid_factor_count = 0
     for fname, direction in {'roe_ttm': 'ascending', 'ret_12m_skip_1m': 'ascending', 'pe_ttm_inverse': 'ascending'}.items():
         if fname not in df.columns:
+            log.warn('factor %s missing, skip it' % fname)
+            continue
+        if not df[fname].notna().any():
+            log.warn('factor %s has no valid values, skip it' % fname)
             continue
         col = df[fname].rank(method='average')
         sd = col.std(ddof=1)
@@ -76,6 +81,9 @@ def _compute_factor_scores(context, stocks):
         if direction == 'descending':
             col = -col
         scores = scores + g.factor_weights.get(fname, 0) * col.fillna(0)
+        valid_factor_count += 1
+    if valid_factor_count == 0:
+        return pd.Series(dtype=float)
     return scores
 
 
@@ -90,9 +98,8 @@ def rebalance(context):
         if s not in target:
             order_target(s, 0)
 
-    # 等权买入
+    # 等权再平衡
     if target:
-        cash_per_stock = context.portfolio.available_cash / len(target)
+        target_value = context.portfolio.total_value / len(target)
         for s in target:
-            if s not in context.portfolio.positions:
-                order_value(s, cash_per_stock)
+            order_target_value(s, target_value)

@@ -6,7 +6,7 @@
 """
 
 
-STOCKS = ['000001.XSHE', '600036.XSHG']   # ← 交易池
+STOCKS = ('000001.XSHE', '600036.XSHG')   # ← 交易池
 BB_PERIOD = 20        # ← 布林带周期
 BB_WIDTH = 2.0        # ← 布林带宽度（标准差倍数）
 RSI_PERIOD = 14       # ← RSI 周期

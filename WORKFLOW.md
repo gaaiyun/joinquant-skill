@@ -166,6 +166,8 @@ out/03_extracted.json （ExtractedStrategy 结构）
 out/strategy/strategy.py + _meta.yaml （可粘到聚宽 Web 编辑器）
 ```
 
+`codegen` 会自动运行 `strategy_lint`。如果 LLM 抽出的因子既没有聚宽 native factor id，也没有本仓库手算实现，默认会失败；这是有意设计，避免生成全 0 因子导致排序结果失真。需要先看骨架时可显式加 `--allow-placeholders`，但生成的 NaN/TODO 占位必须人工补完后再回测。
+
 或者一条龙：
 
 ```bash
@@ -187,6 +189,15 @@ python -m research_importer fetch --code 600519 --limit 5 -o out/00_reports.txt
 输出文件按发布日期倒序，每篇研报用 `=` 分隔线分开。挑一篇感兴趣的摘出来后，走入口 A 的 Step 2-4。
 
 akshare 拿到的是摘要而非付费 PDF 全文。仓库本身不内置任何研报正文，版权边界见 [`research_importer/disclaimer.md`](research_importer/disclaimer.md)。
+
+需要真实外部验证时，可显式开启 live tests：
+
+```bash
+JQSKILL_ENABLE_AKSHARE_LIVE=1 python -m pytest tests/test_optional_live_integrations.py -q
+JQSKILL_ENABLE_JQDATA_LIVE=1 python -m pytest tests/test_optional_live_integrations.py -q
+```
+
+这些测试默认跳过。本地 lint、mock runtime 或 codegen 通过，只能证明生成代码语法和仓库内语义检查通过；真实聚宽回测 / 模拟盘结果仍需要在用户自己的聚宽账户里验证。
 
 ### 完整 case 演示
 
@@ -238,7 +249,7 @@ print(f"单调性评分 = {gb.monotonicity_score:.2f}")
 | 没开 `use_real_price` | 回测有未来函数偏差 | lint 会报错 |
 | 在 `before_trading_start` 下单 | 订单被拒绝 | lint 会报错 |
 | 跨日缓存 `get_price` 返回值 | 前复权价格不一致 | 每天重新获取 |
-| 手动计算买入股数 | 拆股后出错 | 用 `order_value` |
+| 手动计算买入股数 | 拆股后出错 | 买入用 `order_value`，再平衡用 `order_target_value` |
 | 全局变量不用 `g.` | 跨运行状态泄露 | 统一用 `g.xxx` |
 | `pip install` 第三方库 | 平台沙箱不支持 | 只用预装库 |
 | 对主力合约代码下单 | 报错 | 先 `get_dominant_future` |

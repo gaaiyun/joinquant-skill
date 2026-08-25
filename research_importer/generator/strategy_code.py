@@ -58,7 +58,7 @@ def _get_universe(context):
 
 
 def _compute_factor_scores(context, stocks):
-    """从聚宽官方因子库一次拉所有 native 因子；非 native 因子留作 TODO。"""
+    """从聚宽官方因子库拉 native 因子；已支持的非 native 因子用手算实现。"""
     df = pd.DataFrame(index=stocks)
 
     # 一次性拉 native 因子（end_date=context.previous_date 避免未来函数）
@@ -82,8 +82,13 @@ def _compute_factor_scores(context, stocks):
 
     # 标准化每个因子（rank + zscore），按方向调正
     scores = pd.Series(0.0, index=stocks)
+    valid_factor_count = 0
     for fname, direction in {factor_directions}.items():
         if fname not in df.columns:
+            log.warn('factor %s missing, skip it' % fname)
+            continue
+        if not df[fname].notna().any():
+            log.warn('factor %s has no valid values, skip it' % fname)
             continue
         col = df[fname].rank(method='average')
         sd = col.std(ddof=1)
@@ -91,6 +96,9 @@ def _compute_factor_scores(context, stocks):
         if direction == 'descending':
             col = -col
         scores = scores + g.factor_weights.get(fname, 0) * col.fillna(0)
+        valid_factor_count += 1
+    if valid_factor_count == 0:
+        return pd.Series(dtype=float)
     return scores
 
 
@@ -105,21 +113,20 @@ def rebalance(context):
         if s not in target:
             order_target(s, 0)
 
-    # 等权买入
+    # 等权再平衡
     if target:
-        cash_per_stock = context.portfolio.available_cash / len(target)
+        target_value = context.portfolio.total_value / len(target)
         for s in target:
-            if s not in context.portfolio.positions:
-                order_value(s, cash_per_stock)
+            order_target_value(s, target_value)
 '''
 
 
 _SCHEDULE_SNIPPETS = {
-    "daily": "    run_daily(rebalance, time='0930')",
-    "weekly": "    run_weekly(rebalance, 1, time='0930')",
-    "monthly": "    run_monthly(rebalance, 1, time='0930')",
-    "quarterly": "    run_monthly(rebalance, 1, time='0930')  # 简化为月调，季度可加日期判断",
-    "ad_hoc": "    run_daily(rebalance, time='0930')  # 按需调度，请手动改",
+    "daily": "    run_daily(rebalance, time='09:31')",
+    "weekly": "    run_weekly(rebalance, 1, time='09:31')",
+    "monthly": "    run_monthly(rebalance, 1, time='09:31')",
+    "quarterly": "    run_monthly(rebalance, 1, time='09:31')  # 简化为月调，季度可加日期判断",
+    "ad_hoc": "    run_daily(rebalance, time='09:31')  # 按需调度，请手动改",
 }
 
 
@@ -132,11 +139,31 @@ _UNIVERSE_MAP = {
 
 
 _FACTOR_COMPUTE_TEMPLATES = {
-    # 给非 native 因子的占位（native 已经在上面一次性 get_factor_values 拉好）
+    # 显式允许 placeholder 时使用 NaN，不再静默生成全 0 因子。
     "non_native_placeholder": (
         "    # 因子 '{name}' 没有聚宽 native id，需要手算\n"
         "    # 参考 factors/<category>/{name}.py 的 compute_jq 函数体\n"
-        "    df['{name}'] = pd.Series(0.0, index=stocks)   # TODO: replace"
+        "    df['{name}'] = pd.Series(np.nan, index=stocks)   # TODO: replace"
+    ),
+}
+
+
+_MANUAL_FACTOR_COMPUTE_BLOCKS = {
+    "ret_5d": (
+        "    # ret_5d：聚宽没有 native factor id，用 previous_date + count=6 手算，避免未来函数\n"
+        "    prices = get_price(\n"
+        "        stocks, end_date=context.previous_date, count=6,\n"
+        "        fields=['close'], panel=False, fq='pre', skip_paused=False,\n"
+        "    )\n"
+        "    if prices is None or len(prices) == 0:\n"
+        "        df['ret_5d'] = pd.Series(np.nan, index=stocks)\n"
+        "    else:\n"
+        "        close_panel = prices.set_index(['time', 'code'])['close'].unstack('code')\n"
+        "        close_panel = close_panel.reindex(columns=stocks)\n"
+        "        if len(close_panel) < 6:\n"
+        "            df['ret_5d'] = pd.Series(np.nan, index=stocks)\n"
+        "        else:\n"
+        "            df['ret_5d'] = close_panel.iloc[-1] / close_panel.iloc[0] - 1.0"
     ),
 }
 
@@ -178,7 +205,12 @@ def _resolve_native_id(slug: str) -> Optional[str]:
         return None
 
 
-def build_strategy_code(strategy: ExtractedStrategy, hold_num: int = 20) -> str:
+def build_strategy_code(
+    strategy: ExtractedStrategy,
+    hold_num: int = 20,
+    *,
+    allow_placeholders: bool = False,
+) -> str:
     """从 ExtractedStrategy 生成聚宽策略代码（不写盘）。"""
     universe_code = _resolve_universe_code(strategy.universe or "")
     benchmark = strategy.benchmark or universe_code
@@ -198,8 +230,15 @@ def build_strategy_code(strategy: ExtractedStrategy, hold_num: int = 20) -> str:
         native_id = _resolve_native_id(slug)
         native_ids[slug] = native_id
         if native_id is None:
-            # 非 native → 加 placeholder
-            compute_blocks.append(_FACTOR_COMPUTE_TEMPLATES["non_native_placeholder"].format(name=slug))
+            if slug in _MANUAL_FACTOR_COMPUTE_BLOCKS:
+                compute_blocks.append(_MANUAL_FACTOR_COMPUTE_BLOCKS[slug])
+            elif allow_placeholders:
+                compute_blocks.append(_FACTOR_COMPUTE_TEMPLATES["non_native_placeholder"].format(name=slug))
+            else:
+                raise ValueError(
+                    f"因子 {slug!r} 没有聚宽 native id，也没有本仓库手算实现；"
+                    "请先在 factors/ 中实现 compute_jq，或显式启用 allow_placeholders。"
+                )
         factor_names.append(slug)
 
     # 归一化权重
@@ -235,12 +274,18 @@ def write_strategy(
     strategy: ExtractedStrategy,
     output_dir: str | Path,
     hold_num: int = 20,
+    *,
+    allow_placeholders: bool = False,
 ) -> Path:
     """生成 strategy.py + _meta.yaml 到 output_dir。"""
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    code = build_strategy_code(strategy, hold_num=hold_num)
+    code = build_strategy_code(
+        strategy,
+        hold_num=hold_num,
+        allow_placeholders=allow_placeholders,
+    )
     code_path = out / "strategy.py"
     code_path.write_text(code, encoding="utf-8")
 

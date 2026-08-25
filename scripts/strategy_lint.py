@@ -208,6 +208,21 @@ class StrategyLinter(ast.NodeVisitor):
             self._imported_names.add(alias.asname or alias.name)
         self.generic_visit(node)
 
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if self._current_func is None:
+            for name in self._extract_assigned_names(node.targets):
+                if self._looks_like_strategy_state(name, node.value):
+                    self._warn_module_state(name, node)
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if self._current_func is None:
+            names = self._extract_assigned_names([node.target])
+            for name in names:
+                if self._looks_like_strategy_state(name, node.value):
+                    self._warn_module_state(name, node)
+        self.generic_visit(node)
+
     def visit_Call(self, node: ast.Call) -> None:
         func_name = self._extract_call_name(node.func)
         if func_name:
@@ -254,7 +269,8 @@ class StrategyLinter(ast.NodeVisitor):
 
             # 4. 检查 get_price 是否传了 start_date 而没传 count
             if func_name == 'get_price':
-                kw_names = {kw.arg for kw in node.keywords}
+                kw_by_name = {kw.arg: kw.value for kw in node.keywords if kw.arg}
+                kw_names = set(kw_by_name)
                 if 'start_date' in kw_names and 'count' not in kw_names:
                     has_end_date = 'end_date' in kw_names
                     if not has_end_date:
@@ -262,6 +278,15 @@ class StrategyLinter(ast.NodeVisitor):
                             'warning', node.lineno, node.col_offset, 'JQ003',
                             'get_price 用了 start_date 但没传 count 或 end_date',
                             '建议改用 count=N 形式，避免未来函数',
+                        )
+                for kw_name in ('start_date', 'end_date'):
+                    literal = self._extract_date_literal(kw_by_name.get(kw_name))
+                    if literal:
+                        self.report.add(
+                            'warning', node.lineno, node.col_offset, 'JQ003',
+                            f'get_price 的 {kw_name} 使用了硬编码日期 {literal}',
+                            '历史回测中固定日期可能晚于当前回测时点；建议使用 '
+                            'end_date=context.previous_date + count=N',
                         )
 
             # 5. 检查在 before_trading_start / after_trading_end 中下单
@@ -327,6 +352,46 @@ class StrategyLinter(ast.NodeVisitor):
             if value:
                 return f'{value}.{node.attr}'
             return node.attr
+        return None
+
+    def _extract_assigned_names(self, targets: list[ast.AST]) -> list[str]:
+        names: list[str] = []
+        for target in targets:
+            if isinstance(target, ast.Name):
+                names.append(target.id)
+            elif isinstance(target, (ast.Tuple, ast.List)):
+                names.extend(self._extract_assigned_names(list(target.elts)))
+        return names
+
+    def _looks_like_strategy_state(self, name: str, value: ast.AST | None) -> bool:
+        if name.startswith('__') and name.endswith('__'):
+            return False
+        if value is None:
+            return not name.isupper()
+        mutable_nodes = (
+            ast.List, ast.Dict, ast.Set,
+            ast.ListComp, ast.DictComp, ast.SetComp,
+            ast.Call,
+        )
+        if isinstance(value, mutable_nodes):
+            return True
+        # 大写简单常量按配置常量处理；小写变量在聚宽策略中建议放到 g.*。
+        if name.isupper() and isinstance(value, ast.Constant):
+            return False
+        return not name.isupper()
+
+    def _warn_module_state(self, name: str, node: ast.AST) -> None:
+        self.report.add(
+            'warning', node.lineno, node.col_offset, 'JQ006',
+            f'模块级变量 {name} 可能在聚宽环境跨运行残留',
+            f'策略运行状态建议放到 g.{name.lower()}；若是常量，请使用大写不可变值',
+        )
+
+    def _extract_date_literal(self, node: ast.AST | None) -> str | None:
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            value = node.value.strip()
+            if re.match(r'^\d{4}-\d{2}-\d{2}$', value):
+                return value
         return None
 
     def finalize(self) -> None:

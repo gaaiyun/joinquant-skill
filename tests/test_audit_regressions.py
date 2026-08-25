@@ -173,7 +173,7 @@ def test_build_strategy_code_handles_slug_collisions():
                             definition="z", direction="ascending"),
         ],
     )
-    code = build_strategy_code(s)
+    code = build_strategy_code(s, allow_placeholders=True)
     # 三个因子都应当出现，第一个 unnamed_factor，后续加 _2 / _3
     assert "'unnamed_factor'" in code
     assert "'unnamed_factor_2'" in code

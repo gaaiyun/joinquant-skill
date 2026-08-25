@@ -130,6 +130,157 @@ def test_build_strategy_code_sets_use_real_price():
     assert "set_option('use_real_price', True)" in code
 
 
+def test_build_strategy_code_uses_target_value_rebalancing():
+    """生成策略必须对所有目标持仓做目标市值再平衡。"""
+    s = _sample_strategy()
+    code = build_strategy_code(s)
+    assert "order_target_value(s, target_value)" in code
+    assert "order_value(s, cash_per_stock)" not in code
+
+
+def test_schedule_snippets_use_documented_joinquant_time_format():
+    """调度时间应使用项目文档/模板里的 HH:MM 或语义时间格式。"""
+    for freq in ("daily", "weekly", "monthly", "quarterly", "ad_hoc"):
+        s = _sample_strategy()
+        s.rebalance_freq = freq
+        code = build_strategy_code(s)
+        assert "time='09:31'" in code
+        assert "time='0930'" not in code
+
+
+def test_build_strategy_code_uses_manual_ret_5d_without_zero_placeholder():
+    """已知非 native 因子 ret_5d 应生成真实手算逻辑，不能静默全 0。"""
+    s = ExtractedStrategy(
+        title="短反测试",
+        source="ut",
+        rebalance_freq="weekly",
+        universe="中证 800",
+        primary_factors=[
+            ExtractedFactor(
+                name="ret_5d",
+                chinese_name="5 日收益",
+                category="reversal",
+                definition="过去 5 个交易日累计收益",
+                direction="descending",
+                weight=1.0,
+            ),
+        ],
+    )
+    code = build_strategy_code(s)
+    assert "get_price(" in code
+    assert "count=6" in code
+    assert "df['ret_5d'] = pd.Series(0.0" not in code
+    assert "TODO: replace" not in code
+
+
+def test_build_strategy_code_rejects_unknown_non_native_factor():
+    """未知手算因子默认失败，避免输出看似可用但全 0 的策略。"""
+    s = ExtractedStrategy(
+        title="未知因子",
+        source="ut",
+        rebalance_freq="monthly",
+        universe="中证 800",
+        primary_factors=[
+            ExtractedFactor(
+                name="custom_alpha_999",
+                chinese_name="未知 alpha",
+                category="alternative",
+                definition="没有实现的因子",
+                direction="ascending",
+                weight=1.0,
+            ),
+        ],
+    )
+    with pytest.raises(ValueError, match="custom_alpha_999"):
+        build_strategy_code(s)
+
+
+def test_generated_strategy_mock_runtime_rebalances_target_values(monkeypatch):
+    """codegen -> fake JoinQuant runtime：确认卖出非目标并按目标市值调仓。"""
+    import sys
+    import types
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    orders: list[tuple[str, str, float]] = []
+    scheduled: list[tuple[str, str, str]] = []
+
+    jqdata = types.ModuleType("jqdata")
+    jqdata.g = SimpleNamespace()
+    jqdata.log = SimpleNamespace(warn=lambda *args, **kwargs: None)
+    jqdata.OrderCost = lambda **kwargs: ("OrderCost", kwargs)
+    jqdata.FixedSlippage = lambda value: ("FixedSlippage", value)
+    jqdata.set_benchmark = lambda benchmark: None
+    jqdata.set_option = lambda *args, **kwargs: None
+    jqdata.set_order_cost = lambda *args, **kwargs: None
+    jqdata.set_slippage = lambda *args, **kwargs: None
+    jqdata.run_monthly = lambda func, monthday, time: scheduled.append(("monthly", func.__name__, time))
+    jqdata.run_weekly = lambda func, weekday, time: scheduled.append(("weekly", func.__name__, time))
+    jqdata.run_daily = lambda func, time: scheduled.append(("daily", func.__name__, time))
+    jqdata.get_index_stocks = lambda code: ["000001.XSHE", "000002.XSHE", "000003.XSHE"]
+    jqdata.get_current_data = lambda: {
+        s: SimpleNamespace(is_st=False, paused=False)
+        for s in ["000001.XSHE", "000002.XSHE", "000003.XSHE"]
+    }
+    jqdata.order_target = lambda security, amount: orders.append(("order_target", security, amount))
+    jqdata.order_target_value = (
+        lambda security, value: orders.append(("order_target_value", security, value))
+    )
+    jqdata.__all__ = [
+        "g", "log", "OrderCost", "FixedSlippage", "set_benchmark", "set_option",
+        "set_order_cost", "set_slippage", "run_monthly", "run_weekly", "run_daily",
+        "get_index_stocks", "get_current_data", "order_target", "order_target_value",
+    ]
+
+    jqfactor = types.ModuleType("jqfactor")
+    jqfactor.get_factor_values = lambda securities, factors, end_date, count: {
+        "ROE_TTM": pd.DataFrame(
+            [[3.0, 2.0, 1.0]],
+            columns=["000001.XSHE", "000002.XSHE", "000003.XSHE"],
+        )
+    }
+
+    monkeypatch.setitem(sys.modules, "jqdata", jqdata)
+    monkeypatch.setitem(sys.modules, "jqfactor", jqfactor)
+
+    strategy = ExtractedStrategy(
+        title="mock runtime",
+        source="ut",
+        rebalance_freq="monthly",
+        universe="中证 800",
+        primary_factors=[
+            ExtractedFactor(
+                name="roe_ttm",
+                chinese_name="ROE",
+                category="quality",
+                definition="x",
+                direction="ascending",
+                weight=1.0,
+            ),
+        ],
+    )
+    code = build_strategy_code(strategy, hold_num=2)
+    namespace: dict[str, object] = {}
+    exec(code, namespace)
+
+    context = SimpleNamespace(
+        previous_date="2024-12-31",
+        portfolio=SimpleNamespace(
+            positions={"000001.XSHE": object(), "000003.XSHE": object()},
+            total_value=100000.0,
+            available_cash=50000.0,
+        ),
+    )
+    namespace["initialize"](context)
+    namespace["rebalance"](context)
+
+    assert ("monthly", "rebalance", "09:31") in scheduled
+    assert ("order_target", "000003.XSHE", 0) in orders
+    assert ("order_target_value", "000001.XSHE", 50000.0) in orders
+    assert ("order_target_value", "000002.XSHE", 50000.0) in orders
+
+
 def test_write_strategy_creates_files(tmp_path: Path):
     s = _sample_strategy()
     out = write_strategy(s, tmp_path / "test_strat")

@@ -93,6 +93,73 @@ def initialize(context):
     assert 'JQ011' in warning_codes
 
 
+def test_lint_warns_hardcoded_future_get_price_dates(tmp_path: Path) -> None:
+    """JQ003: get_price 里硬编码未来日期应被标成未来函数风险。"""
+    bad = tmp_path / 'future_date.py'
+    bad.write_text('''
+def initialize(context):
+    set_benchmark('000300.XSHG')
+    set_option('use_real_price', True)
+    set_order_cost(OrderCost(open_tax=0, close_tax=0.001,
+                              open_commission=0.0003, close_commission=0.0003,
+                              close_today_commission=0, min_commission=5),
+                   type='stock')
+    set_slippage(FixedSlippage(0.02))
+
+def market_open(context):
+    get_price('000001.XSHE', start_date='2099-01-01', end_date='2099-12-31')
+''', encoding='utf-8')
+    report = lint_file(bad)
+    warnings = [(i.code, i.message) for i in report.warnings]
+    assert any(code == 'JQ003' and '2099' in message for code, message in warnings)
+
+
+def test_lint_warns_hardcoded_historical_get_price_dates(tmp_path: Path) -> None:
+    """历史回测中，早于电脑当天的固定日期也可能位于回测时点之后。"""
+    bad = tmp_path / 'historical_fixed_date.py'
+    bad.write_text('''
+def initialize(context):
+    set_benchmark('000300.XSHG')
+    set_option('use_real_price', True)
+    set_order_cost(OrderCost(open_tax=0, close_tax=0.001,
+                              open_commission=0.0003, close_commission=0.0003,
+                              close_today_commission=0, min_commission=5),
+                   type='stock')
+    set_slippage(FixedSlippage(0.02))
+
+def market_open(context):
+    get_price('000001.XSHE', end_date='2020-12-31', count=20)
+''', encoding='utf-8')
+    report = lint_file(bad)
+    warnings = [(i.code, i.message) for i in report.warnings]
+    assert any(code == 'JQ003' and '2020-12-31' in message for code, message in warnings)
+
+
+def test_lint_warns_module_level_strategy_state(tmp_path: Path) -> None:
+    """JQ006: 策略状态应放到 g.*，不要用模块级变量。"""
+    bad = tmp_path / 'global_state.py'
+    bad.write_text('''
+HOLDINGS = []
+threshold = 0.8
+MAX_HOLD = 10
+
+def initialize(context):
+    set_benchmark('000300.XSHG')
+    set_option('use_real_price', True)
+    set_order_cost(OrderCost(open_tax=0, close_tax=0.001,
+                              open_commission=0.0003, close_commission=0.0003,
+                              close_today_commission=0, min_commission=5),
+                   type='stock')
+    set_slippage(FixedSlippage(0.02))
+''', encoding='utf-8')
+    report = lint_file(bad)
+    jq006 = [i for i in report.warnings if i.code == 'JQ006']
+    assert len(jq006) == 2
+    assert 'HOLDINGS' in ' '.join(i.message for i in jq006)
+    assert 'threshold' in ' '.join(i.message for i in jq006)
+    assert 'MAX_HOLD' not in ' '.join(i.message for i in jq006)
+
+
 def test_lint_detects_deprecated_api(tmp_path: Path) -> None:
     """JQ002: update_universe 已废弃。"""
     bad = tmp_path / 'deprecated.py'

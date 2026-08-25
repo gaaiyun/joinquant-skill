@@ -36,6 +36,9 @@ research_importer CLI — 研报复现端到端工作流。
 
        python -m research_importer codegen extracted.json -o strategies/my_strat/
 
+   默认拒绝未知非 native 因子，避免静默生成全 0 排序；只想先拿骨架时可显式
+   加 ``--allow-placeholders``，再人工补完 NaN/TODO 占位。
+
 5) ``pipeline``：流水线（要求你自己处理 LLM 这一步）
 
    .. code-block:: bash
@@ -193,7 +196,7 @@ def _cmd_codegen(args) -> int:
         print(f"[error] 文件不存在：{src}", file=sys.stderr)
         return 1
     try:
-        payload = json.loads(src.read_text(encoding="utf-8"))
+        payload = json.loads(src.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         print(f"[error] {src} 不是合法 JSON：{exc}", file=sys.stderr)
         return 2
@@ -205,7 +208,16 @@ def _cmd_codegen(args) -> int:
         return 3
 
     out_dir = Path(args.output)
-    code_path = write_strategy(strategy, out_dir, hold_num=args.hold_num)
+    try:
+        code_path = write_strategy(
+            strategy,
+            out_dir,
+            hold_num=args.hold_num,
+            allow_placeholders=args.allow_placeholders,
+        )
+    except ValueError as exc:
+        print(f"[error] 生成策略失败：{exc}", file=sys.stderr)
+        return 5
     print(f"[ok] 生成策略：{code_path}", file=sys.stderr)
     print(f"[ok] 元数据：{out_dir / '_meta.yaml'}", file=sys.stderr)
 
@@ -336,6 +348,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--hold-num", type=int, default=20, help="持仓数量上限")
     sp.add_argument("--no-lint", action="store_true",
                     help="生成后不自动跑 strategy_lint")
+    sp.add_argument("--allow-placeholders", action="store_true",
+                    help="允许未知非 native 因子生成 NaN/TODO 占位；默认直接失败，避免静默全 0")
     sp.set_defaults(func=_cmd_codegen)
 
     sp = sub.add_parser("pipeline",
@@ -346,6 +360,8 @@ def _build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--source", help="研报来源")
     sp.add_argument("--hold-num", type=int, default=20)
     sp.add_argument("--no-lint", action="store_true")
+    sp.add_argument("--allow-placeholders", action="store_true",
+                    help="允许未知非 native 因子生成 NaN/TODO 占位；默认直接失败")
     sp.set_defaults(func=_cmd_pipeline)
 
     return p

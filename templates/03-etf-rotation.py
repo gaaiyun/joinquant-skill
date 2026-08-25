@@ -6,14 +6,14 @@
 """
 
 
-ETF_POOL = [
+ETF_POOL = (
     '510300.XSHG',  # 沪深300ETF
     '510500.XSHG',  # 中证500ETF
     '159915.XSHE',  # 创业板ETF
     '518880.XSHG',  # 黄金ETF
     '511010.XSHG',  # 国债ETF
     '513100.XSHG',  # 纳指ETF
-]
+)
 TOP_K = 2                # ← 持有最强的几个
 LOOKBACK = 20            # ← 动量回看天数
 REBALANCE_WEEKDAY = 1    # ← 每周几调仓 (1=周一)

@@ -121,7 +121,18 @@ pip install pytest
 python -m pytest tests -v
 ```
 
-应该看到 13 个测试（v2 加了因子库 / factor_lab / research_importer / MCP server 后会更多）全部 PASS。
+应该看到全部测试 PASS；当前版本已包含因子库、factor_lab、research_importer、MCP server 与生成策略语义回归测试。
+
+默认测试不访问外网，也不要求聚宽账号。需要额外跑真实外部接口时，先确认可选依赖和账号状态，再显式开启：
+
+```powershell
+$env:JQSKILL_ENABLE_AKSHARE_LIVE = "1"
+python -m pytest tests\test_optional_live_integrations.py -q
+
+# 已安装 jqdatasdk 且完成 auth 后再开启
+$env:JQSKILL_ENABLE_JQDATA_LIVE = "1"
+python -m pytest tests\test_optional_live_integrations.py -q
+```
 
 ## 7. 完整流程示例：从想法到上线
 

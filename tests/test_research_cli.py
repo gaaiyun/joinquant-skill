@@ -126,6 +126,18 @@ def test_codegen_invalid_json_exits_nonzero(tmp_path):
     assert p.returncode != 0
 
 
+def test_codegen_accepts_utf8_bom_json(tmp_path, sample_extracted_json):
+    """Windows PowerShell 5 的 UTF8 文件常带 BOM，codegen 应能读取。"""
+    payload = sample_extracted_json.read_bytes()
+    bom_json = tmp_path / "bom.json"
+    bom_json.write_bytes(b"\xef\xbb\xbf" + payload)
+    out_dir = tmp_path / "out-bom"
+
+    p = _run_cli(["codegen", str(bom_json), "-o", str(out_dir)])
+    assert p.returncode == 0, p.stderr
+    assert (out_dir / "strategy.py").exists()
+
+
 def test_codegen_missing_file_exits_nonzero(tmp_path):
     p = _run_cli(["codegen", str(tmp_path / "nope.json"), "-o", str(tmp_path / "out")])
     assert p.returncode != 0
